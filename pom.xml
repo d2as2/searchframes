@@ -5,15 +5,15 @@
 	<modelVersion>4.0.0</modelVersion>
 	<parent>
 		<groupId>com.verizon.bda</groupId>
-		<artifactId>trapezium</artifactId>
+		<artifactId>trapezium-parent</artifactId>
 		<version>1.0.0-SNAPSHOT</version>
 		<relativePath>../pom.xml</relativePath>
 	</parent>
         
-	<artifactId>dal</artifactId>
+	<artifactId>trapezium-dal</artifactId>
 	<packaging>jar</packaging>
-	<name>Verizon dal library</name>
-
+	<name>Trapezium dal library</name>
+        
 	<dependencies>
 		<dependency>
 			<groupId>org.apache.spark</groupId>
