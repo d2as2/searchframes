@@ -9,7 +9,7 @@ import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.log4j.Logger
 import org.apache.lucene.analysis.core.KeywordAnalyzer
 import org.apache.lucene.document.Document
-import org.apache.lucene.index.{DirectoryReader, IndexWriter, IndexWriterConfig}
+import org.apache.lucene.index.{DocValues, DirectoryReader, IndexWriter, IndexWriterConfig}
 import org.apache.lucene.index.IndexWriterConfig.OpenMode
 import org.apache.lucene.queryparser.classic.QueryParser
 import org.apache.lucene.search.{BooleanQuery, IndexSearcher}
@@ -21,7 +21,6 @@ import org.apache.spark.sql.{DataFrame, Row}
 import org.apache.spark.sql.types.StructType
 
 // noinspection ScalaStyle
-
 
 class LuceneIndexer(env: String, val indexPathInput: String,
                     val hdfsPath: String,
@@ -51,7 +50,6 @@ class LuceneIndexer(env: String, val indexPathInput: String,
   def index(dataframe: DataFrame, numShards: Int): Unit = {
     val conf = new Configuration
     FileSystem.get(conf).delete(new Path(hdfsPath), true)
-
 
     dataframe.coalesce(numShards).rdd.mapPartitionsWithIndex((i, itr) => {
       val dir = new File(indexPath + PREFIX + i + File.separator)

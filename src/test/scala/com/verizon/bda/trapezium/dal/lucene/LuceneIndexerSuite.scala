@@ -71,9 +71,7 @@ class LuceneIndexerSuite extends FunSuite with SharedSparkContext with BeforeAnd
   }
 
   test("IndexTest") {
-
     val numShards = 2
-
     val idx = new LuceneIndexer("local", localIndexPath, hdfsIndexPath, "tld")
       .setConverter(new TestConverter())
     val sqlContext = SQLContext.getOrCreate(sc)
