@@ -1,78 +1,39 @@
 package com.verizon.bda.trapezium.dal.lucene
 
-import java.io.File
-import java.nio.file.FileSystems
-
-import org.apache.commons.io.FileUtils
-import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.fs.{Path, FileSystem}
-import org.apache.lucene.index.IndexWriterConfig.OpenMode
-import org.apache.lucene.index.{IndexWriter, IndexWriterConfig, FilterLeafReader}
-import org.apache.lucene.store.MMapDirectory
-import org.apache.spark.{TaskContext, SparkContext}
+import org.apache.lucene.queryparser.classic.QueryParser
+import org.apache.lucene.search.BooleanQuery
+import org.apache.spark.sql.Row
+import org.apache.spark.{TaskContext, SparkContext, Partition}
 import org.apache.spark.rdd.RDD
-import org.apache.spark.Partition
-import org.apache.lucene.document.Document
-
 /**
- * @author debasish83 on 12/12/16.
+ * @author debasish83 on 12/15/16.
  */
-class LuceneRDD(sc: SparkContext) extends RDD[LucenePartition] with Serializable {
-  override def compute(split: Partition, context: TaskContext)
-}
-
-/** Factory for [[LuceneRDD]] instancs */
-object LuceneRDD {
-  /**
-   * Converts an input RDD of documents to LuceneRDD
-   *
-   * @param inputDocs The input RDD of lucene documents.
-   * @return The LuceneRDD
-   */
-  def apply(inputDocs: RDD[Document]): LuceneRDD = {
-    inputDocs.mapPartitionsWithIndex((i, itr) => {
-      /*
-      val dir = new File(indexPath + PREFIX + i + File.separator)
-      FileUtils.forceDeleteOnExit(dir)
-      if (dir.isDirectory()) {
-        FileUtils.cleanDirectory(dir)
-      }
-      */
-      val indexWriterConfig = new IndexWriterConfig(analyzer)
-      indexWriterConfig.setOpenMode(OpenMode.CREATE)
-      val localPath = FileSystems.getDefault().getPath(indexPath, PREFIX + i)
-      val directory = new MMapDirectory(localPath)
-
-      val indexWriter = new IndexWriter(directory, indexWriterConfig)
-      itr.foreach {
-        r => {
-          try {
-            val d = converter.rowToDoc(r)
-            indexWriter.addDocument(d);
-          } catch {
-            case e: Throwable => {
-              log.error(s"Error with row: ${r}")
-              throw new RuntimeException(e)
-            }
-          }
-        }
-      }
-      indexWriter.commit()
-      log.debug("Number of documents indexed in this partition: " + indexWriter.maxDoc())
-      indexWriter.close
-      val conf = new Configuration
-      if (env != "local") {
-        FileSystem.get(conf).copyFromLocalFile(true, true,
-          new Path(indexPath, PREFIX + i), new Path(hdfsPath))
-      }
-      else {
-        FileSystem.get(conf).copyFromLocalFile(true, true,
-          new Path(indexPath, PREFIX + i), new Path(hdfsPath, PREFIX + i))
-      }
-      Iterator.empty
-    }).count()
+class LuceneRDD(sc: SparkContext, location: String) extends RDD[LuceneShard](sc, Nil) {
+  override def getPartitions(): Array[Partition] = {
     ???
   }
 
-  private[dal] def createLucenePartition()
+  override def compute(partition: Partition, context: TaskContext): Iterator[LuceneShard] = {
+    ???
+  }
+
+  lazy val qp = new QueryParser("content", analyzer)
+
+  def search(queryStr: String, sample: Double = 1.0): RDD[Row] = {
+    val rows = this.flatMap((shard: LuceneShard) => {
+      BooleanQuery.setMaxClauseCount(Integer.MAX_VALUE)
+      val maxRowsPerPartition = Math.floor(sample * shard.getIndexReader.numDocs()).toInt
+      val topDocs = shard.search(qp.parse(queryStr), maxRowsPerPartition)
+
+      log.debug("Hits within partition: " + topDocs.totalHits)
+      topDocs.scoreDocs.map { d => converter.docToRow(shard.doc(d.doc)) }
+    })
+    rows
+  }
+
+  def count(queryStr: String): Int = {
+    this.map((shard: LuceneShard) => {
+      shard.count(qp.parse(queryStr))
+    }).sum().toInt
+  }
 }
