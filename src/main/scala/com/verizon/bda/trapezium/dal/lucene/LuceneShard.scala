@@ -17,10 +17,10 @@ class LuceneShard(reader: IndexReader,
                   converter: OLAPConverter) extends IndexSearcher(reader) with Logging {
   logInfo(s"lucene shard leaf readers ${leafContexts.size}")
 
-  //TODO: LeafReader may need further processing
+  //TODO: LeafReader may need further understanding
   assert(leafContexts.size() == 1, s"${leafContexts.size()} leafReaders per spark partition")
   val leafReader = leafContexts.get(0).reader()
-
+  
   val dvExtractor = DocValueExtractor(leafReader, converter)
   val analyzer = new KeywordAnalyzer
 
