@@ -8,7 +8,6 @@ import org.apache.lucene.analysis.core.KeywordAnalyzer
 import org.apache.lucene.index._
 import org.apache.lucene.index.IndexWriterConfig.OpenMode
 import org.apache.lucene.queryparser.classic.QueryParser
-import org.apache.lucene.search.BooleanQuery
 import org.apache.lucene.store.MMapDirectory
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
@@ -19,14 +18,14 @@ import java.io.File
 import org.apache.spark.util.DalUtils
 
 class LuceneDAO(val location: String,
-                val dimensions: Seq[String],
-                val uniqueKey: Seq[String] = None,
-                storageLevel: StorageLevel = StorageLevel.DISK_ONLY) extends Serializable {
+                val dimensions: Set[String],
+                val types: Map[String, LuceneType],
+                storageLevel: StorageLevel = StorageLevel.DISK_ONLY,
+                implicit val sc: SparkContext) extends Serializable {
 
   @transient lazy val log = Logger.getLogger(classOf[LuceneDAO])
 
   lazy val analyzer = new KeywordAnalyzer
-  var converter: SparkLuceneConverter = _
 
   val PREFIX = "trapezium-lucenedao-"
   val SUFFIX = "part-"
@@ -34,10 +33,7 @@ class LuceneDAO(val location: String,
   val INDEX_PREFIX = "index"
   val DICTIONARY_PREFIX = "dictionary"
 
-  def setConverter(converter: SparkLuceneConverter): this.type = {
-    this.converter = converter
-    this
-  }
+  val converter = OLAPConverter(sc.getConf, dimensions, types)
 
   //TODO: If index already exist we have to merge dictionary and update indices
   def index(dataframe: DataFrame, time: Time): Unit = {
@@ -54,6 +50,8 @@ class LuceneDAO(val location: String,
 
     val parallelism = dataframe.rdd.context.defaultParallelism
     val sparkConf = dataframe.rdd.sparkContext.getConf
+
+    converter.setSchema(dataframe.schema)
 
     dataframe.coalesce(parallelism).rdd.mapPartitionsWithIndex((i, itr) => {
       val indexWriterConfig = new IndexWriterConfig(analyzer)
@@ -94,10 +92,10 @@ class LuceneDAO(val location: String,
     log.info("Number of partitions: " + dataframe.rdd.getNumPartitions)
   }
 
+  //TODO: load logic will move to LuceneRDD
   var shards : RDD[LuceneShard] = _
 
-  //TODO: load logic will move to LuceneRDD
-  def load(sc: SparkContext): Unit = {
+  def load(): Unit = {
     val indexPath = location.stripSuffix("/") + INDEX_PREFIX
     val indexDir = new HadoopPath(indexPath)
     val fs = FileSystem.get(indexDir.toUri, sc.hadoopConfiguration)
@@ -126,7 +124,7 @@ class LuceneDAO(val location: String,
             new HadoopPath(indexDir.toString))
           val directory = new MMapDirectory(indexDir.toPath)
           val reader = DirectoryReader.open(directory)
-          Some(LuceneShard(reader))
+          Some(LuceneShard(reader, converter))
         } catch {
           case e: IOException => None
           case x: Throwable => throw new RuntimeException(x)
@@ -141,16 +139,19 @@ class LuceneDAO(val location: String,
 
   lazy val qp = new QueryParser("content", analyzer)
 
-  def search(queryStr: String, sample: Double = 1.0): RDD[Row] = {
+  def search(queryStr: String,
+             columns: Seq[String],
+             sample: Double = 1.0): RDD[Row] = {
     val rows = shards.flatMap((shard: LuceneShard) => {
-      BooleanQuery.setMaxClauseCount(Integer.MAX_VALUE)
-      val maxRowsPerPartition = Math.floor(sample * shard.getIndexReader.numDocs()).toInt
-      val topDocs = shard.search(qp.parse(queryStr), maxRowsPerPartition)
-
-      log.debug("Hits within partition: " + topDocs.totalHits)
-      topDocs.scoreDocs.map { d => converter.docToRow(shard.doc(d.doc)) }
+      converter.setColumns(columns)
+      shard.search(queryStr, columns, sample)
     })
     rows
+  }
+
+  //search a query and retrieve for all dimensions + measures
+  def search(queryStr: String, sample: Double = 1.0) : RDD[Row] = {
+    search(queryStr, types.keys.toSeq, sample)
   }
 
   def count(queryStr: String): Int = {

@@ -11,10 +11,9 @@ import scala.collection.mutable.{ArrayBuffer => MArray, Map => MMap}
   *
   * @author pramod.lakshminarasimha on 8/10/16.
   */
+case class FeatureAttr(dictionaryPos: Int, featureOffset: Int) extends Serializable
+
 class DictionaryManager extends Serializable {
-
-  case class FeatureAttr(dictionaryPos: Int, featureOffset: Int) extends Serializable
-
   /**
     * offset points to the last index of the aggregated features
     * array in {{{featureNameLookup}}}
