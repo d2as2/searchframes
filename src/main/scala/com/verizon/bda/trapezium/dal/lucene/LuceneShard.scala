@@ -20,7 +20,7 @@ class LuceneShard(reader: IndexReader,
   //TODO: LeafReader may need further understanding
   assert(leafContexts.size() == 1, s"${leafContexts.size()} leafReaders per spark partition")
   val leafReader = leafContexts.get(0).reader()
-  
+
   val dvExtractor = DocValueExtractor(leafReader, converter)
   val analyzer = new KeywordAnalyzer
 

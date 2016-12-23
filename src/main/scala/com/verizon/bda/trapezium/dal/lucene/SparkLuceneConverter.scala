@@ -32,8 +32,8 @@ trait SparkLuceneConverter extends Serializable with Logging {
     dataType match {
       // String is saved as standard reverse index from search engines
       case s: StringType => new StringField(name, value.asInstanceOf[String], store)
-      // On integer, long, float and double we do want to push range queries and indexing
-      // all distinct values does not make sense.
+      // On integer, long, float and double we do want to push range queries and indexing distinct
+      // value makes no sense
       case i: IntegerType => new IntField(name, value.asInstanceOf[Int], store)
       case l: LongType => new LongField(name, value.asInstanceOf[Long], store)
       case f: FloatType => new FloatField(name, value.asInstanceOf[Float], store)
@@ -53,7 +53,8 @@ trait SparkLuceneConverter extends Serializable with Logging {
       case d: DoubleType => new DoubleDocValuesField(name, value.asInstanceOf[Double])
       case dt: TimestampType => new NumericDocValuesField(name, value.asInstanceOf[Timestamp].getTime)
       case _ => logInfo(s"serializing ${dataType.typeName} as binary doc value field")
-        new BinaryDocValuesField(name, new BytesRef(ser.serialize(value).array()))
+        val bytes = ser.serialize(value).array()
+        new BinaryDocValuesField(name, new BytesRef(bytes))
     }
 
     if (multivalued) new SortedSetDocValuesField(name, field.binaryValue())

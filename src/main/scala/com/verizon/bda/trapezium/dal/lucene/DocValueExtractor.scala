@@ -67,7 +67,7 @@ class DocValueExtractor(leafReader: LeafReader,
         i += 1
       }
     } else {
-      val dimDV = dvMap(dimension).asInstanceOf[NumericDocValues]
+      val dimDV = dvMap(column).asInstanceOf[NumericDocValues]
       dimDV.get(docID).toInt
     }
     dimension

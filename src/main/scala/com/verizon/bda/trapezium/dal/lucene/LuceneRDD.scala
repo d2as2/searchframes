@@ -1,5 +1,6 @@
 package com.verizon.bda.trapezium.dal.lucene
 
+import org.apache.lucene.analysis.core.KeywordAnalyzer
 import org.apache.lucene.queryparser.classic.QueryParser
 import org.apache.lucene.search.BooleanQuery
 import org.apache.spark.sql.Row
@@ -8,7 +9,9 @@ import org.apache.spark.rdd.RDD
 /**
  * @author debasish83 on 12/15/16.
  */
-class LuceneRDD(sc: SparkContext, location: String) extends RDD[LuceneShard](sc, Nil) {
+class LuceneRDD(sc: SparkContext,
+                location: String,
+                converter: OLAPConverter) extends RDD[LuceneShard](sc, Nil) {
   override def getPartitions(): Array[Partition] = {
     ???
   }
@@ -16,6 +19,8 @@ class LuceneRDD(sc: SparkContext, location: String) extends RDD[LuceneShard](sc,
   override def compute(partition: Partition, context: TaskContext): Iterator[LuceneShard] = {
     ???
   }
+
+  val analyzer = new KeywordAnalyzer
 
   lazy val qp = new QueryParser("content", analyzer)
 

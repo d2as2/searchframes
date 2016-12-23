@@ -1,8 +1,7 @@
 package com.verizon.bda.trapezium.dal.lucene
 
-import org.apache.lucene.document.Document
 import org.apache.spark.rdd.RDD
-import org.apache.spark.{SparkContext, Logging}
+import org.apache.spark.Logging
 import org.apache.spark.sql.{DataFrame, SQLContext, Row}
 import org.apache.spark.sql.sources.{InsertableRelation, TableScan, BaseRelation}
 import org.apache.spark.sql.types._
@@ -21,7 +20,6 @@ class LuceneRelation(dimensions: Seq[String],
                      measures: Seq[String],
                      ctx: SQLContext)
   extends BaseRelation
-  with SparkLuceneConverter
   with TableScan
   with InsertableRelation
   with Serializable
@@ -32,17 +30,19 @@ class LuceneRelation(dimensions: Seq[String],
   override def schema: StructType = { ??? }
 
   def toLuceneType(dataType: DataType): String = {
-    case bi: BinaryType => "binary"
-    case b: BooleanType => "boolean"
-    case dt: DateType => "tdate"
-    case db: DoubleType => "tdouble"
-    case dec: DecimalType => "tdouble"
-    case ft: FloatType => "tfloat"
-    case i: IntegerType => "tint"
-    case l: LongType => "tlong"
-    case s: ShortType => "tint"
-    case t: TimestampType => "tdate"
-    case _ => "string"
+    dataType match {
+      case bi: BinaryType => "binary"
+      case b: BooleanType => "boolean"
+      case dt: DateType => "tdate"
+      case db: DoubleType => "tdouble"
+      case dec: DecimalType => "tdouble"
+      case ft: FloatType => "tfloat"
+      case i: IntegerType => "tint"
+      case l: LongType => "tlong"
+      case s: ShortType => "tint"
+      case t: TimestampType => "tdate"
+      case _ => "string"
+    }
   }
 
   def toAddFieldMap(sf: StructField): Map[String, AnyRef] = {
@@ -64,14 +64,6 @@ class LuceneRelation(dimensions: Seq[String],
   }
 
   override def insert(data: DataFrame, overwrite: Boolean): Unit = {
-
-  }
-
-  override def rowToDoc(r: Row): Document = {
-    ???
-  }
-
-  override def docToRow(d: Document): Row = {
     ???
   }
 
