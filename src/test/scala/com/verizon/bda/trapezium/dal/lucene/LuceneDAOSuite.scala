@@ -6,24 +6,19 @@ import com.holdenkarau.spark.testing.SharedSparkContext
 import org.apache.commons.io.FileUtils
 import org.apache.hadoop.fs.Path
 import org.apache.lucene.search.IndexSearcher
+import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.sql.SQLContext
 import org.apache.spark.sql.types._
 import org.scalatest.{BeforeAndAfterAll, FunSuite}
 import java.sql.Time
+import org.apache.spark.mllib.linalg.VectorUDT
+import org.apache.spark.mllib.linalg.SparseVector
 
 class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfterAll {
   val outputPath = "target/luceneIndexerTest/"
   val hdfsIndexPath = new Path(outputPath, "hdfs").toString
 
-  val dimensions = Set("zip", "tld")
-
-  val types =
-    Map("user" -> LuceneType(false, StringType),
-      "zip" -> LuceneType(false, StringType),
-      "tld" -> LuceneType(true, StringType),
-      "visits" -> LuceneType(false, IntegerType))
-
-  val dao = new LuceneDAO(hdfsIndexPath, dimensions, types)
+  val indexTime = new Time(System.nanoTime())
 
   var sqlContext: SQLContext = _
 
@@ -48,6 +43,16 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
   }
 
   test("DictionaryEncoding") {
+    val dimensions = Set("zip", "tld")
+
+    val types =
+      Map("user" -> LuceneType(false, StringType),
+        "zip" -> LuceneType(false, StringType),
+        "tld" -> LuceneType(true, StringType),
+        "visits" -> LuceneType(false, IntegerType))
+
+    val dao = new LuceneDAO(hdfsIndexPath, dimensions, types)
+
     val df = sqlContext.createDataFrame(
       Seq(("123", "94555", Array("verizon.com", "google.com"), 8),
         ("456", "94310", Array("apple.com", "google.com"), 12)))
@@ -67,6 +72,16 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
   }
 
   test("IndexTest") {
+    val dimensions = Set("zip", "tld")
+
+    val types =
+      Map("user" -> LuceneType(false, StringType),
+        "zip" -> LuceneType(false, StringType),
+        "tld" -> LuceneType(true, StringType),
+        "visits" -> LuceneType(false, IntegerType))
+
+    val dao = new LuceneDAO(hdfsIndexPath, dimensions, types)
+
     // With coalesce > 2 partition run and 0 leafReader causes
     // maxHits = 0 on which an assertion is thrown
     val df = sqlContext.createDataFrame(
@@ -74,7 +89,6 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
         ("456", "94310", Array("apple.com", "google.com"), 12)))
       .toDF("user", "zip", "tld", "visits").coalesce(2)
 
-    val indexTime = new Time(System.nanoTime())
     dao.index(df, indexTime)
 
     dao.load(sc)
@@ -87,5 +101,32 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
 
     assert(rdd1.map(_.getAs[String](0)).collect.toSet == Set("123", "456"))
     assert(rdd2.map(_.getAs[String](0)).collect.toSet == Set("123"))
+  }
+
+  test("VectorTest") {
+    val indexPath = new Path(outputPath, "vectors").toString
+
+    val dimensions = Set("zip")
+
+    val types =
+      Map("user" -> LuceneType(false, StringType),
+        "zip" -> LuceneType(false, StringType),
+        "visits" -> LuceneType(false, new VectorUDT()))
+
+    val sv = Vectors.sparse(2, Array(2, 4), Array(5.0, 8.0))
+    val user1 = ("123", "94555", sv)
+    val user2 = ("456", "94310", Vectors.sparse(3, Array(1, 3, 5), Array(4.0, 7.0, 9.0)))
+    val df2 = sqlContext.createDataFrame(
+      Seq(user1, user2))
+      .toDF("user", "zip", "visits").coalesce(2)
+
+    val dao = new LuceneDAO(indexPath, dimensions, types)
+    dao.index(df2, indexTime)
+    dao.load(sc)
+
+    val row = dao.search("zip:94555").collect()(0)
+
+    assert(row.getAs[String](0) == "123")
+    assert(row.getAs[SparseVector](2) == sv)
   }
 }

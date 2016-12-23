@@ -52,7 +52,7 @@ class DocValueExtractor(leafReader: LeafReader,
         val bytes = dvMap(column).asInstanceOf[SortedDocValues].get(docID).bytes
         converter.ser.deserialize[String](ByteBuffer.wrap(bytes))
       case v: VectorUDT =>
-        val bytes = dvMap(column).asInstanceOf[SortedDocValues].get(docID).bytes
+        val bytes = dvMap(column).asInstanceOf[BinaryDocValues].get(docID).bytes
         converter.ser.deserialize[Vector](ByteBuffer.wrap(bytes))
       case _ =>
         throw new LuceneDAOException(s"unsupported serialization for column ${column} type ${measureType}")

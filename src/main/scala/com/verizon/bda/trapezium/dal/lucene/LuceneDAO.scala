@@ -35,7 +35,7 @@ class LuceneDAO(val location: String,
 
   val converter = OLAPConverter(dimensions, types)
 
-  var dictionary: DictionaryManager = _
+  private var dictionary: DictionaryManager = _
 
   def encodeDictionary(df: DataFrame): DictionaryManager = {
     val dm = new DictionaryManager
@@ -198,6 +198,19 @@ class LuceneDAO(val location: String,
     shards.map((shard: LuceneShard) => {
       shard.count(qp.parse(queryStr))
     }).sum().toInt
+  }
+
+  def timeseries(queryStr: String,
+                 timeColumn: String,
+                 measure: String): Array[Int] = {
+    ???
+  }
+
+  def group(queryStr: String,
+            dimension: String,
+            measure: String) : Array[Int] = {
+    converter.types(measure)
+    ???
   }
 }
 
