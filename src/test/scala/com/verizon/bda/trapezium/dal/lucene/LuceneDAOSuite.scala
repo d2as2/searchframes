@@ -32,7 +32,7 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
     sqlContext = SQLContext.getOrCreate(sc)
     conf.registerKryoClasses(Array(classOf[IndexSearcher],
       classOf[DictionaryManager]))
-    cleanup()
+    //cleanup()
   }
 
   override def afterAll(): Unit = {

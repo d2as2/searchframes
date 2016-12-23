@@ -51,6 +51,8 @@ class LuceneDAO(val location: String,
   //TODO: If index already exist we have to merge dictionary and update indices
   def index(dataframe: DataFrame, time: Time): Unit = {
     val indexPath = location.stripSuffix("/") + "/" + INDEX_PREFIX
+    val dictionaryPath = location.stripSuffix("/") + "/" + DICTIONARY_PREFIX
+
     val path = new HadoopPath(indexPath)
     val conf = new Configuration
     val fs = FileSystem.get(path.toUri, conf)
@@ -117,6 +119,8 @@ class LuceneDAO(val location: String,
     while (filesList.hasNext())
       log.debug(filesList.next().getPath.toString())
 
+    dictionary.save(dictionaryPath)(dataframe.rdd.sparkContext)
+
     log.info("Number of partitions: " + dataframe.rdd.getNumPartitions)
   }
 
@@ -125,6 +129,8 @@ class LuceneDAO(val location: String,
 
   def load(sc: SparkContext): Unit = {
     val indexPath = location.stripSuffix("/") + "/" + INDEX_PREFIX
+    val dictionaryPath = location.stripSuffix("/") + "/" + DICTIONARY_PREFIX
+
     val indexDir = new HadoopPath(indexPath)
     val fs = FileSystem.get(indexDir.toUri, sc.hadoopConfiguration)
     val status: Array[FileStatus] = fs.listStatus(indexDir, new PathFilter {
