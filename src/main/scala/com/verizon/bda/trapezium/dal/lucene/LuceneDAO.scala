@@ -135,7 +135,7 @@ class LuceneDAO(val location: String,
     val fs = FileSystem.get(indexDir.toUri, sc.hadoopConfiguration)
     val status: Array[FileStatus] = fs.listStatus(indexDir, new PathFilter {
       override def accept(path: HadoopPath): Boolean = {
-        path.getName.startsWith("part-")
+        path.getName.startsWith(SUFFIX)
       }
     })
     val numPartitions = status.length

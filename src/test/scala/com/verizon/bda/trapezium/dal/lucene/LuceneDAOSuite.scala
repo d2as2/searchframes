@@ -6,7 +6,7 @@ import com.holdenkarau.spark.testing.SharedSparkContext
 import org.apache.commons.io.FileUtils
 import org.apache.hadoop.fs.Path
 import org.apache.lucene.search.IndexSearcher
-import org.apache.spark.sql.{Row, SQLContext}
+import org.apache.spark.sql.SQLContext
 import org.apache.spark.sql.types._
 import org.scalatest.{BeforeAndAfterAll, FunSuite}
 import java.sql.Time
@@ -32,7 +32,7 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
     sqlContext = SQLContext.getOrCreate(sc)
     conf.registerKryoClasses(Array(classOf[IndexSearcher],
       classOf[DictionaryManager]))
-    //cleanup()
+    cleanup()
   }
 
   override def afterAll(): Unit = {
