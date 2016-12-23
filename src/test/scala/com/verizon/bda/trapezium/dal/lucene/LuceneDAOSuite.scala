@@ -15,15 +15,28 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
   val outputPath = "target/luceneIndexerTest/"
   val hdfsIndexPath = new Path(outputPath, "hdfs").toString
 
+  val dimensions = Set("zip", "tld")
+
+  val types =
+    Map("user" -> LuceneType(false, StringType),
+      "zip" -> LuceneType(false, StringType),
+      "tld" -> LuceneType(true, StringType),
+      "visits" -> LuceneType(false, IntegerType))
+
+  val dao = new LuceneDAO(hdfsIndexPath, dimensions, types)
+
+  var sqlContext: SQLContext = _
+
   override def beforeAll(): Unit = {
     super.beforeAll()
+    sqlContext = SQLContext.getOrCreate(sc)
     conf.registerKryoClasses(Array(classOf[IndexSearcher],
       classOf[DictionaryManager]))
     cleanup()
   }
 
   override def afterAll(): Unit = {
-    //cleanup()
+    cleanup()
     super.afterAll()
   }
 
@@ -35,17 +48,6 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
   }
 
   test("DictionaryEncoding") {
-    val dimensions = Set("zip", "tld")
-
-    val types =
-      Map("user" -> LuceneType(false, StringType),
-        "zip" -> LuceneType(false, StringType),
-        "tld" -> LuceneType(true, StringType),
-        "visits" -> LuceneType(false, IntegerType))
-
-    val dao = new LuceneDAO(hdfsIndexPath, dimensions, types)
-    val sqlContext = SQLContext.getOrCreate(sc)
-
     val df = sqlContext.createDataFrame(
       Seq(("123", "94555", Array("verizon.com", "google.com"), 8),
         ("456", "94310", Array("apple.com", "google.com"), 12)))
@@ -53,31 +55,37 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
 
     val dm = dao.encodeDictionary(df)
     assert(dm.size() == 5)
+
+    val zipRange = dm.getRange("zip")
+    val tldRange = dm.getRange("tld")
+
+    val idx1 = dm.indexOf("zip", "94555")
+    val idx2 = dm.indexOf("tld", "verizon.com")
+
+    assert(idx1 >= zipRange._1 && idx1 < zipRange._2)
+    assert(idx2 >= tldRange._1 && idx2 < tldRange._2)
   }
 
   test("IndexTest") {
-    val dimensions = Set("zip", "tld")
-
-    val types =
-      Map("user" -> LuceneType(false, StringType),
-          "zip" -> LuceneType(false, StringType),
-          "tld" -> LuceneType(true, StringType),
-          "visits" -> LuceneType(false, IntegerType))
-
-    val dao = new LuceneDAO(hdfsIndexPath, dimensions, types)
-    val sqlContext = SQLContext.getOrCreate(sc)
     // With coalesce > 2 partition run and 0 leafReader causes
     // maxHits = 0 on which an assertion is thrown
     val df = sqlContext.createDataFrame(
       Seq(("123", "94555", Array("verizon.com", "google.com"), 8),
-          ("456", "94310", Array("apple.com", "google.com"), 12)))
+        ("456", "94310", Array("apple.com", "google.com"), 12)))
       .toDF("user", "zip", "tld", "visits").coalesce(2)
 
     val indexTime = new Time(System.nanoTime())
     dao.index(df, indexTime)
-    //dao.load(sc)
 
-    //assert(dao.search("tld:google.com").count == 2)
-    //assert(dao.search("tld:verizon.com").count == 1)
+    dao.load(sc)
+
+    val rdd1 = dao.search("tld:google.com")
+    val rdd2 = dao.search("tld:verizon.com")
+
+    assert(rdd1.count == 2)
+    assert(rdd2.count == 1)
+
+    assert(rdd1.map(_.getAs[String](0)).collect.toSet == Set("123", "456"))
+    assert(rdd2.map(_.getAs[String](0)).collect.toSet == Set("123"))
   }
 }

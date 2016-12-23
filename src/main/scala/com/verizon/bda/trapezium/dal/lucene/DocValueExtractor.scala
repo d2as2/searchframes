@@ -17,7 +17,10 @@ class DocValueExtractor(leafReader: LeafReader,
                         converter: OLAPConverter) {
   val dvMap = if (leafReader != null) {
     converter.types.map { case (k, v) =>
-      if (v.multiValued) (k, DocValues.getSortedSet(leafReader, k))
+      if (converter.dimensions.contains(k)) {
+        if (v.multiValued) (k, DocValues.getSortedNumeric(leafReader, k))
+        else (k, DocValues.getNumeric(leafReader, k))
+      }
       else {
         v.dataType match {
           case i: IntegerType => (k, DocValues.getNumeric(leafReader, k))
@@ -61,6 +64,7 @@ class DocValueExtractor(leafReader: LeafReader,
   def extractDimension(docID: Int, column: String): Any = {
     val dimension = if (converter.types(column).multiValued) {
       val multiDimDV = dvMap(column).asInstanceOf[SortedNumericDocValues]
+      multiDimDV.setDocument(docID)
       val maxIdx = multiDimDV.count()
       val indices = Array.fill[Int](maxIdx.toInt)(0)
       var i = 0
@@ -68,13 +72,15 @@ class DocValueExtractor(leafReader: LeafReader,
         indices(i) = multiDimDV.valueAt(i).toInt
         i += 1
       }
+      println(s"$column ${indices.mkString(",")}")
+      indices.toSeq
     } else {
       val dimDV = dvMap(column).asInstanceOf[NumericDocValues]
       dimDV.get(docID).toInt
     }
     dimension
   }
-  
+
   def extract(docID: Int, columns: Seq[String]): Row = {
     if (dvMap.size > 0) {
       val sqlFields = columns.map((column) => {
@@ -82,7 +88,7 @@ class DocValueExtractor(leafReader: LeafReader,
         else if (converter.types.contains(column)) extractMeasure(docID, column)
         else throw new LuceneDAOException(s"unsupported ${column} in doc value extraction")
       })
-      Row(sqlFields)
+      Row.fromSeq(sqlFields)
     } else {
       Row.empty
     }
