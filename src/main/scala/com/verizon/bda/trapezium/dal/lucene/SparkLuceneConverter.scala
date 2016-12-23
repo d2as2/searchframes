@@ -31,14 +31,20 @@ trait SparkLuceneConverter extends Serializable with Logging {
                      store: Field.Store = Field.Store.NO): Field = {
     dataType match {
       // String is saved as standard reverse index from search engines
-      case s: StringType => new StringField(name, value.asInstanceOf[String], store)
+      case s: StringType =>
+        new StringField(name, value.asInstanceOf[String], store)
       // On integer, long, float and double we do want to push range queries and indexing distinct
       // value makes no sense
-      case i: IntegerType => new IntField(name, value.asInstanceOf[Int], store)
-      case l: LongType => new LongField(name, value.asInstanceOf[Long], store)
-      case f: FloatType => new FloatField(name, value.asInstanceOf[Float], store)
-      case d: DoubleType => new DoubleField(name, value.asInstanceOf[Double], store)
-      case _ => throw new LuceneDAOException(s"unsupported sparksql ${dataType} for indexed field")
+      case i: IntegerType =>
+        new IntField(name, value.asInstanceOf[Int], store)
+      case l: LongType =>
+        new LongField(name, value.asInstanceOf[Long], store)
+      case f: FloatType =>
+        new FloatField(name, value.asInstanceOf[Float], store)
+      case d: DoubleType =>
+        new DoubleField(name, value.asInstanceOf[Double], store)
+      case _ =>
+        throw new LuceneDAOException(s"unsupported sparksql ${dataType} for indexed field")
     }
   }
 
@@ -47,17 +53,29 @@ trait SparkLuceneConverter extends Serializable with Logging {
                       multivalued: Boolean,
                       value: Any): Field = {
     val field = dataType match {
-      case i: IntegerType => new NumericDocValuesField(name, value.asInstanceOf[Int])
-      case l: LongType => new NumericDocValuesField(name, value.asInstanceOf[Long])
-      case f: FloatType => new FloatDocValuesField(name, value.asInstanceOf[Float])
-      case d: DoubleType => new DoubleDocValuesField(name, value.asInstanceOf[Double])
-      case dt: TimestampType => new NumericDocValuesField(name, value.asInstanceOf[Timestamp].getTime)
+      case i: IntegerType =>
+        new NumericDocValuesField(name, value.asInstanceOf[Int])
+      case l: LongType =>
+        new NumericDocValuesField(name, value.asInstanceOf[Long])
+      case f: FloatType =>
+        new FloatDocValuesField(name, value.asInstanceOf[Float])
+      case d: DoubleType =>
+        new DoubleDocValuesField(name, value.asInstanceOf[Double])
+      case dt: TimestampType =>
+        new NumericDocValuesField(name, value.asInstanceOf[Timestamp].getTime)
+      case st: StringType =>
+        val bytes = ser.serialize(value).array()
+        new SortedDocValuesField(name, new BytesRef(bytes))
       case _ => logInfo(s"serializing ${dataType.typeName} as binary doc value field")
         val bytes = ser.serialize(value).array()
         new BinaryDocValuesField(name, new BytesRef(bytes))
     }
 
-    if (multivalued) new SortedSetDocValuesField(name, field.binaryValue())
+    if (multivalued) {
+      assert(dataType == IntegerType, "multi-valued dimensions must be integer")
+      println(s"XXX sorted set field ${name} dataType ${dataType} ${value.asInstanceOf[Int]} XXX")
+      new SortedNumericDocValuesField(name, value.asInstanceOf[Int])
+    }
     else field
   }
 

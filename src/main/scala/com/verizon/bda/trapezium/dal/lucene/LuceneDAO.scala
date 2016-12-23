@@ -1,7 +1,6 @@
 package com.verizon.bda.trapezium.dal.lucene
 
 import java.io.IOException
-import java.nio.file.Path
 import com.verizon.bda.trapezium.dal.exceptions.LuceneDAOException
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{Path => HadoopPath, PathFilter, FileStatus, FileSystem}
@@ -11,8 +10,9 @@ import org.apache.lucene.index._
 import org.apache.lucene.index.IndexWriterConfig.OpenMode
 import org.apache.lucene.queryparser.classic.QueryParser
 import org.apache.lucene.store.MMapDirectory
-import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{DataFrame, Row}
 import org.apache.spark.storage.StorageLevel
 import java.sql.Time
@@ -35,9 +35,22 @@ class LuceneDAO(val location: String,
 
   val converter = OLAPConverter(dimensions, types)
 
+  var dictionary: DictionaryManager = _
+
+  def encodeDictionary(df: DataFrame): DictionaryManager = {
+    val dm = new DictionaryManager
+    dimensions.foreach(f => {
+      val selectedDim =
+        if (types(f).multiValued) df.select(explode(df(f)))
+        else df.select(df(f))
+      dm.addToDictionary(f, selectedDim.rdd.map(_.getAs[String](0)))
+    })
+    dm
+  }
+
   //TODO: If index already exist we have to merge dictionary and update indices
   def index(dataframe: DataFrame, time: Time): Unit = {
-    val indexPath = location.stripSuffix("/") + INDEX_PREFIX
+    val indexPath = location.stripSuffix("/") + "/" + INDEX_PREFIX
     val path = new HadoopPath(indexPath)
     val conf = new Configuration
     val fs = FileSystem.get(path.toUri, conf)
@@ -47,6 +60,9 @@ class LuceneDAO(val location: String,
     }
     fs.mkdirs(path)
     FileSystem.closeAll()
+
+    dictionary = encodeDictionary(dataframe)
+    val dictionaryBr = dataframe.rdd.context.broadcast(dictionary)
 
     val parallelism = dataframe.rdd.context.defaultParallelism
     val sparkConf = dataframe.rdd.sparkContext.getConf
@@ -59,10 +75,11 @@ class LuceneDAO(val location: String,
       val indexWriterConfig = new IndexWriterConfig(analyzer)
       indexWriterConfig.setOpenMode(OpenMode.CREATE)
       // Open a directory on Standalone/YARN/Mesos disk cache
-      val shuffleIndexFile = DalUtils.getTempFile(PREFIX, localDir, SUFFIX + i)
+      val shuffleIndexFile = DalUtils.getTempFile(PREFIX, localDir)
       val shuffleIndexPath = shuffleIndexFile.toPath
-      log.debug(s"Created ${shuffleIndexPath} to write lucene partition $i shuffle")
+      log.info(s"Created ${shuffleIndexPath} to write lucene partition $i shuffle")
       converter.setSchema(inSchema)
+      converter.setDictionary(dictionaryBr.value)
 
       val directory = new MMapDirectory(shuffleIndexPath)
       val indexWriter = new IndexWriter(directory, indexWriterConfig)
@@ -73,7 +90,7 @@ class LuceneDAO(val location: String,
             indexWriter.addDocument(d);
           } catch {
             case e: Throwable => {
-              throw new LuceneDAOException(s"Error with adding row ${r} to document")
+              throw new LuceneDAOException(s"Error with adding row ${r} to document ${e.getStackTraceString}")
             }
           }
         }
@@ -88,7 +105,7 @@ class LuceneDAO(val location: String,
       val srcPath = new HadoopPath(shuffleIndexPath.toString)
 
       FileSystem.get(conf).copyFromLocalFile(true, srcPath, dstPath)
-      log.debug(s"Copied indices from ${srcPath.toString} to deep storage ${dstPath.toString}")
+      log.info(s"Copied indices from ${srcPath.toString} to deep storage ${dstPath.toString}")
 
       if (shuffleIndexFile.exists() && !shuffleIndexFile.delete()) {
         log.error(s"Error while deleting temp file ${shuffleIndexFile.getAbsolutePath()}")
@@ -107,7 +124,7 @@ class LuceneDAO(val location: String,
   var shards : RDD[LuceneShard] = _
 
   def load(sc: SparkContext): Unit = {
-    val indexPath = location.stripSuffix("/") + INDEX_PREFIX
+    val indexPath = location.stripSuffix("/") + "/" + INDEX_PREFIX
     val indexDir = new HadoopPath(indexPath)
     val fs = FileSystem.get(indexDir.toUri, sc.hadoopConfiguration)
     val status: Array[FileStatus] = fs.listStatus(indexDir, new PathFilter {
@@ -116,36 +133,40 @@ class LuceneDAO(val location: String,
       }
     })
     val numPartitions = status.length
+    log.info(s"Loading ${numPartitions} indices from path ${indexPath}")
+
     val partitionIds = sc.parallelize((0 until numPartitions).toList, sc.defaultParallelism)
 
     val sparkConf = sc.getConf
     val localDir = new File(DalUtils.getLocalDir(sparkConf))
 
-    log.info(s"using ${localDir} to read lucene shuffle")
+    log.info(s"Created ${localDir} to read lucene shuffle")
 
     shards = partitionIds.flatMap((i: Int) => {
-      val hdfsPath = indexPath + PREFIX + i + File.separator
-
-      val indexDir = File.createTempFile(PREFIX, SUFFIX + i, localDir)
+      val hdfsPath = indexPath + "/" + SUFFIX + i
+      // Open a directory on Standalone/YARN/Mesos disk cache
+      val shuffleIndexFile = DalUtils.getTempFile(PREFIX, localDir)
+      val shuffleIndexPath = shuffleIndexFile.toPath
+      log.info(s"Created ${shuffleIndexPath} to read lucene partition $i shuffle")
 
       val conf = new Configuration
       val shard: Option[LuceneShard] = {
-        log.debug("Copying data from hdfs: " + hdfsPath + " to local: " + indexDir.toString)
+        log.info(s"Copying data from deep storage: ${hdfsPath} to local shuffle: ${shuffleIndexPath}")
         try {
           FileSystem.get(conf).copyToLocalFile(false,
             new HadoopPath(hdfsPath),
-            new HadoopPath(indexDir.toString))
-          val directory = new MMapDirectory(indexDir.toPath)
+            new HadoopPath(shuffleIndexPath.toString))
+          val directory = new MMapDirectory(shuffleIndexPath)
           val reader = DirectoryReader.open(directory)
           Some(LuceneShard(reader, converter))
         } catch {
-          case e: IOException => None
+          case e: IOException =>
+            throw new LuceneDAOException(s"Copy from: ${hdfsPath} to local shuffle: ${shuffleIndexPath} failed")
           case x: Throwable => throw new RuntimeException(x)
         }
       }
       shard
     })
-
     shards.cache()
     log.info("Number of shards: " + shards.count())
   }

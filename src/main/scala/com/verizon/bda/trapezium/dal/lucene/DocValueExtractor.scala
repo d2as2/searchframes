@@ -15,19 +15,23 @@ import org.apache.spark.sql.Row
  */
 class DocValueExtractor(leafReader: LeafReader,
                         converter: OLAPConverter) {
-  val dvMap = converter.types.map { case (k, v) =>
-    if (v.multiValued) (k, DocValues.getSortedSet(leafReader, k))
-    else {
-      v.dataType match {
-        case i: IntegerType => (k, DocValues.getNumeric(leafReader, k))
-        case l: LongType => (k, DocValues.getNumeric(leafReader, k))
-        case f: FloatType => (k, DocValues.getNumeric(leafReader, k))
-        case d: DoubleType => (k, DocValues.getNumeric(leafReader, k))
-        case dt: TimestampType => (k, DocValues.getNumeric(leafReader, k))
-        case st: StringType => (k, DocValues.getSorted(leafReader, k))
-        case _ => (k, DocValues.getBinary(leafReader, k))
+  val dvMap = if (leafReader != null) {
+    converter.types.map { case (k, v) =>
+      if (v.multiValued) (k, DocValues.getSortedSet(leafReader, k))
+      else {
+        v.dataType match {
+          case i: IntegerType => (k, DocValues.getNumeric(leafReader, k))
+          case l: LongType => (k, DocValues.getNumeric(leafReader, k))
+          case f: FloatType => (k, DocValues.getNumeric(leafReader, k))
+          case d: DoubleType => (k, DocValues.getNumeric(leafReader, k))
+          case dt: TimestampType => (k, DocValues.getNumeric(leafReader, k))
+          case st: StringType => (k, DocValues.getSorted(leafReader, k))
+          case _ => (k, DocValues.getBinary(leafReader, k))
+        }
       }
     }
+  } else {
+    Map.empty[String, Object]
   }
 
   //TODO: Before going to performance opt, let's expose it out as a RDD[Row] for df operations
@@ -53,17 +57,15 @@ class DocValueExtractor(leafReader: LeafReader,
   }
 
   //TODO: We are bringing out-heap memory to in-heap now which should affects performance.
-  // Here we do want to push the aggregation down
+  //TODO: Here we do want to push the aggregation down
   def extractDimension(docID: Int, column: String): Any = {
     val dimension = if (converter.types(column).multiValued) {
-      val multiDimDV = dvMap(column).asInstanceOf[SortedSetDocValues]
-      val maxIdx = multiDimDV.getValueCount
+      val multiDimDV = dvMap(column).asInstanceOf[SortedNumericDocValues]
+      val maxIdx = multiDimDV.count()
       val indices = Array.fill[Int](maxIdx.toInt)(0)
       var i = 0
       while (i < maxIdx) {
-        val bytes = multiDimDV.lookupOrd(i).bytes
-        val idx = converter.ser.deserialize[Int](ByteBuffer.wrap(bytes))
-        indices(i) = idx
+        indices(i) = multiDimDV.valueAt(i).toInt
         i += 1
       }
     } else {
@@ -72,14 +74,18 @@ class DocValueExtractor(leafReader: LeafReader,
     }
     dimension
   }
-
+  
   def extract(docID: Int, columns: Seq[String]): Row = {
-    val sqlFields = columns.map((column) => {
-      if (converter.dimensions.contains(column)) extractDimension(docID, column)
-      else if (converter.types.contains(column)) extractMeasure(docID, column)
-      else throw new LuceneDAOException(s"unsupported ${column} in doc value extraction")
-    })
-    Row(sqlFields)
+    if (dvMap.size > 0) {
+      val sqlFields = columns.map((column) => {
+        if (converter.dimensions.contains(column)) extractDimension(docID, column)
+        else if (converter.types.contains(column)) extractMeasure(docID, column)
+        else throw new LuceneDAOException(s"unsupported ${column} in doc value extraction")
+      })
+      Row(sqlFields)
+    } else {
+      Row.empty
+    }
   }
 }
 

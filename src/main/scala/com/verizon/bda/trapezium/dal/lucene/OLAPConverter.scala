@@ -33,24 +33,35 @@ class OLAPConverter(val dimensions: Set[String],
                multiValued: Boolean): Unit = {
     // dimensions will be indexed and docvalued based on dictionary encoding
     // measures will be docvalued
-    // TODO: Add dictionary encoding on dimension doc values
     if (dimensions.contains(fieldName)) {
       doc.add(toIndexedField(fieldName, dataType, value))
+      //dictionary encoding on dimension doc values
+      val feature = value.asInstanceOf[String]
+      val idx = dict.indexOf(fieldName, feature)
+      doc.add(toDocValueField(fieldName, IntegerType, multiValued, idx))
+    }
+    else if (types.contains(fieldName)) {
       doc.add(toDocValueField(fieldName, dataType, multiValued, value))
     }
-    else if (types.contains(fieldName))
-      doc.add(toDocValueField(fieldName, dataType, multiValued, value))
     else {
       logInfo(s"${fieldName} is not in dimensions/measures")
       doc.add(toStoredField(fieldName, dataType, value))
     }
   }
-  
+
   private var inputSchema: StructType = _
+
+  private var dict: DictionaryManager = _
 
   def setSchema(schema: StructType): OLAPConverter = {
     logDebug(s"schema ${schema} set for the converter")
     this.inputSchema = schema
+    this
+  }
+
+  def setDictionary(dict: DictionaryManager): OLAPConverter = {
+    logInfo(s"Setting dictionary of size ${dict.size()} for converter")
+    this.dict = dict
     this
   }
 

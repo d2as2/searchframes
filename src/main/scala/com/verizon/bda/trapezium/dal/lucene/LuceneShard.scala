@@ -17,9 +17,12 @@ class LuceneShard(reader: IndexReader,
                   converter: OLAPConverter) extends IndexSearcher(reader) with Logging {
   logInfo(s"lucene shard leaf readers ${leafContexts.size}")
 
-  //TODO: LeafReader may need further understanding
-  assert(leafContexts.size() == 1, s"${leafContexts.size()} leafReaders per spark partition")
-  val leafReader = leafContexts.get(0).reader()
+  //TODO: LeafReader > 1 need further understanding
+  assert(leafContexts.size() <= 1, s"${leafContexts.size()} leafReaders per spark partition")
+
+  val leafReader =
+    if (leafContexts.size() > 0) leafContexts.get(0).reader()
+    else null
 
   val dvExtractor = DocValueExtractor(leafReader, converter)
   val analyzer = new KeywordAnalyzer
@@ -28,8 +31,8 @@ class LuceneShard(reader: IndexReader,
 
   def search(queryStr: String, columns: Seq[String], sample: Double = 1.0): Iterator[Row] = {
     BooleanQuery.setMaxClauseCount(Integer.MAX_VALUE)
-    val maxRowsPerPartition = Math.floor(sample * this.getIndexReader.numDocs()).toInt
-    val topDocs: TopDocs = this.search(qp.parse(queryStr), maxRowsPerPartition)
+    val maxRowsPerPartition = Math.floor(sample * getIndexReader.numDocs()).toInt
+    val topDocs = search(qp.parse(queryStr), maxRowsPerPartition)
 
     // TODO: Scoring of docs is not required for queries that are not extracting relevance
     val rows = topDocs.scoreDocs.iterator.map { d =>
