@@ -1,87 +1,50 @@
 package com.verizon.bda.trapezium.dal.lucene
 
-import java.sql.Timestamp
 import com.verizon.bda.trapezium.dal.exceptions.LuceneDAOException
 import org.apache.lucene.index._
-import org.apache.spark.mllib.linalg.VectorUDT
-import org.apache.spark.mllib.linalg.Vector
-import org.apache.spark.sql.types._
-import java.nio.ByteBuffer
 import org.apache.spark.sql.Row
-
+import org.apache.spark.sql.types._
 /**
  * @author debasish83 on 12/22/16.
  *         Supports primitives for extracting doc value fields
  */
 class DocValueExtractor(leafReader: LeafReader,
-                        converter: OLAPConverter) {
-  val dvMap = if (leafReader != null) {
-    converter.types.map { case (k, v) =>
-      if (converter.dimensions.contains(k)) {
-        if (v.multiValued) (k, DocValues.getSortedNumeric(leafReader, k))
-        else (k, DocValues.getNumeric(leafReader, k))
-      }
-      else {
-        v.dataType match {
-          case i: IntegerType => (k, DocValues.getNumeric(leafReader, k))
-          case l: LongType => (k, DocValues.getNumeric(leafReader, k))
-          case f: FloatType => (k, DocValues.getNumeric(leafReader, k))
-          case d: DoubleType => (k, DocValues.getNumeric(leafReader, k))
-          case dt: TimestampType => (k, DocValues.getNumeric(leafReader, k))
-          case st: StringType => (k, DocValues.getSorted(leafReader, k))
-          case _ => (k, DocValues.getBinary(leafReader, k))
-        }
-      }
+                        converter: OLAPConverter) extends Serializable {
+  val types = converter.types
+  val dimensions = converter.dimensions
+  val ser = converter.ser
+
+  private val dvMap = if (leafReader != null) {
+    types.map { case (k, v) =>
+      //Dimensions have gone through DictionaryEncoding
+      val dataType =
+        if (dimensions.contains(k)) IntegerType
+        else v.dataType
+      val accessor = DocValueAccessor(leafReader, k, dataType, v.multiValued, ser)
+      (k, accessor)
     }
   } else {
-    Map.empty[String, Object]
+    Map.empty[String, DocValueAccessor]
   }
 
-  //TODO: Before going to performance opt, let's expose it out as a RDD[Row] for df operations
-
-  //TODO: We are bringing out-heap memory to in-heap now which affects performance
+  //TODO: Measure can be multi-valued as well. for first iteration of time series
+  //measures are considered to be single-valued
   def extractMeasure(docID: Int, column: String): Any = {
-    val measureType = converter.types(column).dataType
-    measureType match {
-      case i: IntegerType => dvMap(column).asInstanceOf[NumericDocValues].get(docID)
-      case l: LongType => dvMap(column).asInstanceOf[NumericDocValues].get(docID)
-      case f: FloatType => dvMap(column).asInstanceOf[NumericDocValues].get(docID).toFloat
-      case d: DoubleType => dvMap(column).asInstanceOf[NumericDocValues].get(docID).toDouble
-      case dt: TimestampType => new Timestamp(dvMap(column).asInstanceOf[NumericDocValues].get(docID))
-      case st: StringType =>
-        val bytes = dvMap(column).asInstanceOf[SortedDocValues].get(docID).bytes
-        converter.ser.deserialize[String](ByteBuffer.wrap(bytes))
-      case v: VectorUDT =>
-        val bytes = dvMap(column).asInstanceOf[BinaryDocValues].get(docID).bytes
-        converter.ser.deserialize[Vector](ByteBuffer.wrap(bytes))
-      case _ =>
-        throw new LuceneDAOException(s"unsupported serialization for column ${column} type ${measureType}")
-    }
+    assert(!dimensions.contains(column), s"$column is not a measure")
+    val offset = dvMap(column).getOffset(docID)
+    assert(offset == 1, s"measure $column is a multi-value field with offset $offset")
+    dvMap(column).extract(docID, offset - 1)
   }
 
-  //TODO: We are bringing out-heap memory to in-heap now which should affects performance.
-  //TODO: Here we do want to push the aggregation down
   def extractDimension(docID: Int, column: String): Any = {
-    val dimension = if (converter.types(column).multiValued) {
-      val multiDimDV = dvMap(column).asInstanceOf[SortedNumericDocValues]
-      multiDimDV.setDocument(docID)
-      val maxIdx = multiDimDV.count()
-      val indices = Array.fill[Int](maxIdx.toInt)(0)
-      var i = 0
-      while (i < maxIdx) {
-        indices(i) = multiDimDV.valueAt(i).toInt
-        i += 1
-      }
-      println(s"$column ${indices.mkString(",")}")
-      indices.toSeq
-    } else {
-      val dimDV = dvMap(column).asInstanceOf[NumericDocValues]
-      dimDV.get(docID).toInt
-    }
-    dimension
+    assert(dimensions.contains(column), s"$column is not a dimension")
+    val offset = dvMap(column).getOffset(docID)
+    if (offset > 1)
+      Seq((0 until offset).map(dvMap(column).extract(docID, _)): _*)
+    else dvMap(column).extract(docID, offset - 1)
   }
 
-  def extract(docID: Int, columns: Seq[String]): Row = {
+  def extract(columns: Seq[String], docID: Int): Row = {
     if (dvMap.size > 0) {
       val sqlFields = columns.map((column) => {
         if (converter.dimensions.contains(column)) extractDimension(docID, column)
@@ -92,6 +55,14 @@ class DocValueExtractor(leafReader: LeafReader,
     } else {
       Row.empty
     }
+  }
+
+  def getOffset(column: String, docID: Int): Int = {
+    dvMap(column).getOffset(docID)
+  }
+
+  def extract(column: String, docID: Int, offset: Int): Any = {
+    dvMap(column).extract(docID, offset)
   }
 }
 

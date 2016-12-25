@@ -38,7 +38,7 @@ class LuceneShard(reader: IndexReader,
     val rows = topDocs.scoreDocs.iterator.map { d =>
       // Extract stored fields
       val stored = converter.docToRow(doc(d.doc))
-      val docValued = dvExtractor.extract(d.doc, columns)
+      val docValued = dvExtractor.extract(columns, d.doc)
       Row.merge(stored, docValued)
     }
     log.debug("Hits within partition: " + topDocs.totalHits)
