@@ -18,6 +18,7 @@ import org.apache.spark.storage.StorageLevel
 import java.sql.Time
 import java.io.File
 import org.apache.spark.util.DalUtils
+import org.apache.spark.sql.types._
 
 class LuceneDAO(val location: String,
                 val dimensions: Set[String],
@@ -200,17 +201,46 @@ class LuceneDAO(val location: String,
     }).sum().toInt
   }
 
-  def timeseries(queryStr: String,
-                 timeColumn: String,
-                 measure: String): Array[Int] = {
-    ???
-  }
-
   def group(queryStr: String,
             dimension: String,
             measure: String) : Array[Int] = {
-    converter.types(measure)
-    ???
+    val dimRange = dictionary.getRange(dimension)
+    val dimOffset = dimRange._1
+    val dimSize = dimRange._2 - dimRange._1 + 1
+
+    val seqOp = (agg: LuceneAggregator,
+                 shard: LuceneShard) => {
+      shard.group(
+        queryStr,
+        dimension,
+        dimOffset,
+        measure,
+        agg)
+    }
+
+    val combOp = (agg: LuceneAggregator,
+                  other: LuceneAggregator) => {
+      agg.merge(other)
+    }
+
+    //TODO: Aggregator is picked based on the SQL functions sum, countDistinct, count
+    val agg =
+      if (converter.types(measure).dataType == StringType)
+        new CardinalityEstimator
+      else
+        new NumericSum
+
+    //TODO: If aggregator is not initialized from driver and broadcasted, merge fails on NPE
+    //TODO: RDD aggregate needs to be looked into
+    agg.init(dimSize)
+
+    val results = shards.treeAggregate(agg)(seqOp, combOp)
+
+    //TODO: Map dimension using dictionary
+    if (converter.types(measure).dataType == StringType)
+      results.asInstanceOf[CardinalityEstimator].buffer.map(_.cardinality().toInt)
+    else
+      results.asInstanceOf[NumericSum].buffer.map(_.toInt)
   }
 }
 

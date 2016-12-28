@@ -14,7 +14,7 @@ class DocValueExtractor(leafReader: LeafReader,
   val dimensions = converter.dimensions
   val ser = converter.ser
 
-  private val dvMap = if (leafReader != null) {
+  private val dvMap: Map[String, DocValueAccessor] = if (leafReader != null) {
     types.map { case (k, v) =>
       //Dimensions have gone through DictionaryEncoding
       val dataType =
@@ -26,6 +26,7 @@ class DocValueExtractor(leafReader: LeafReader,
   } else {
     Map.empty[String, DocValueAccessor]
   }
+
 
   //TODO: Measure can be multi-valued as well. for first iteration of time series
   //measures are considered to be single-valued

@@ -16,8 +16,6 @@ import org.apache.spark.mllib.linalg.SparseVector
 
 class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfterAll {
   val outputPath = "target/luceneIndexerTest/"
-  val hdfsIndexPath = new Path(outputPath, "hdfs").toString
-
   val indexTime = new Time(System.nanoTime())
 
   var sqlContext: SQLContext = _
@@ -51,7 +49,8 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
         "tld" -> LuceneType(true, StringType),
         "visits" -> LuceneType(false, IntegerType))
 
-    val dao = new LuceneDAO(hdfsIndexPath, dimensions, types)
+    val dictPath = new Path(outputPath, "hdfs").toString
+    val dao = new LuceneDAO(dictPath, dimensions, types)
 
     val df = sqlContext.createDataFrame(
       Seq(("123", "94555", Array("verizon.com", "google.com"), 8),
@@ -71,7 +70,7 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
     assert(idx2 >= tldRange._1 && idx2 < tldRange._2)
   }
 
-  test("IndexTest") {
+  test("index test") {
     val dimensions = Set("zip", "tld")
 
     val types =
@@ -80,7 +79,8 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
         "tld" -> LuceneType(true, StringType),
         "visits" -> LuceneType(false, IntegerType))
 
-    val dao = new LuceneDAO(hdfsIndexPath, dimensions, types)
+    val indexPath = new Path(outputPath, "hdfs").toString
+    val dao = new LuceneDAO(indexPath, dimensions, types)
 
     // With coalesce > 2 partition run and 0 leafReader causes
     // maxHits = 0 on which an assertion is thrown
@@ -103,7 +103,7 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
     assert(rdd2.map(_.getAs[String](0)).collect.toSet == Set("123"))
   }
 
-  test("VectorTest") {
+  test("vector test") {
     val indexPath = new Path(outputPath, "vectors").toString
 
     val dimensions = Set("zip")
@@ -128,5 +128,61 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
 
     assert(row.getAs[String](0) == "123")
     assert(row.getAs[SparseVector](2) == sv)
+  }
+
+  test("numeric sum test") {
+    val dimensions = Set("zip", "tld")
+    val indexPath = new Path(outputPath, "numeric").toString
+
+    val types =
+      Map("user" -> LuceneType(false, StringType),
+        "zip" -> LuceneType(false, StringType),
+        "tld" -> LuceneType(true, StringType),
+        "visits" -> LuceneType(false, IntegerType))
+
+    val df = sqlContext.createDataFrame(
+      Seq(("123", "94555", Array("verizon.com", "google.com"), 8),
+        ("456", "94310", Array("apple.com", "google.com"), 12)))
+      .toDF("user", "zip", "tld", "visits").coalesce(2)
+
+    val dao = new LuceneDAO(indexPath, dimensions, types)
+    dao.index(df, indexTime)
+    dao.load(sc)
+
+    val result = dao.group("tld:google.com", "zip", "visits")
+    assert(result.length == 2)
+
+    val result2 = dao.group("tld:verizon.com", "zip", "visits")
+    assert(result2(0) == 8)
+  }
+
+  test("cardinality estimator test") {
+    val dimensions = Set("zip", "tld")
+    val indexPath = new Path(outputPath, "cardinality").toString
+
+    val types =
+      Map("user" -> LuceneType(false, StringType),
+        "zip" -> LuceneType(false, StringType),
+        "tld" -> LuceneType(true, StringType),
+        "visits" -> LuceneType(false, IntegerType))
+
+    val dao = new LuceneDAO(indexPath, dimensions, types)
+
+    val df = sqlContext.createDataFrame(
+      Seq(("123", "94555", Array("verizon.com", "google.com"), 8),
+        ("456", "94310", Array("apple.com", "google.com"), 12),
+        ("314", "94555", Array("google.com", "amazon.com"), 10)))
+      .toDF("user", "zip", "tld", "visits").coalesce(2)
+    dao.index(df, indexTime)
+    dao.load(sc)
+
+    val result = dao.group("tld:google.com", "zip", "user")
+    assert(result.length == 2)
+    val result2 = dao.group("tld:amazon.com", "zip", "user")
+    println(result2.mkString(","))
+    assert(result2(0) == 1)
+    val result3 = dao.group("tld:verizon.com OR tld:amazon.com", "zip", "user")
+    println(result3.mkString(","))
+    assert(result3(0) == 2)
   }
 }

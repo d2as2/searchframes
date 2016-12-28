@@ -1,13 +1,13 @@
 package com.verizon.bda.trapezium.dal.lucene
 
 import java.nio.ByteBuffer
-import java.sql.Timestamp
-
 import com.verizon.bda.trapezium.dal.exceptions.LuceneDAOException
 import org.apache.lucene.index.{DocValues, LeafReader}
 import org.apache.spark.mllib.linalg.{Vector, VectorUDT}
 import org.apache.spark.serializer.SerializerInstance
 import org.apache.spark.sql.types._
+
+import scala.reflect.ClassTag
 
 /**
  * @author debasish83 on 12/24/16.
@@ -15,64 +15,6 @@ import org.apache.spark.sql.types._
  *        No need to call dataframe.cache to build the columnar compression, the
  *        data is backed on disk using columnar compression during index time in LuceneDAO
  */
-
-/*
-  For one group
-  StringAccessor.aggregate(aggregator, docID, ArrayAccessor) {
-  Here we want ArrayAccessor to extract the indices but don't want to use
-  additional memory than what ArrayAccessor already has been allocated
-  ArrayAccessor.extract(docID): Int
-      def hasNext: Boolean
-
-      Now what happen if ArrayAccessor.extractTo is called by another thread ?
-
-      It can't happen since we have one LuceneShard per partition, no docValues are shared
-      within thread
-
-      Inside the loop we will call this.extract(docID) while hasNext
-  }
-
-  For multiple group
-  StringAccesor.
-  aggregate(aggregator,
-  docID, Seq[ArrayAccessor, IntAccessor, IntAccessor])
-
-  Dimension is ArrayAccessor we get range of indices
-  Now for Aggregator we need to define a data type
-  Sum extends Aggregator
-  HyperLogLog extends Aggregator
-
-  May be it is:
-
-  Aggregator(Seq[ArrayAccessor, IntAccessor, IntAccessor]) {
-    aggregate(Seq[docIDs], StringAccessor) : InternalRow
-    merge(InternalRow, InternalRow): InternalRow
-  }
-
-  Say we want to use Catalyst aggregator
-
-  Aggregator {
-    def initialize(size = ArrayAccessor.size * IntAccessor.size * IntAccessor.size): Unit
-    This initializes a buffer of size with InternalRow[Any]
-
-    def update(docID: Int, st: StringAccessor): Unit {
-      ArrayAccessor.extract(docID)
-      IntAccessor.extract(docID)
-      while(ArrayAccessor.hasNext) {
-        while(IntAccesor.hasNext) {
-          val id1 = ArrayAccesor.extract(docID)
-          val id2 = IntAccesor.extract(docID)
-          val index = f(id1, id2)
-          buffer.update(
-          buffer(index) += T(st.extract(docID))
-  }
-
-  def merge(buffer1: InternalRow, buffer2: InternalRow): Unit
-
-  Can we aggregate more than one measure at once ?
-
-  Aggregator.aggregate(docIDs, StringAccessor)
-*/
 
 abstract class DocValueAccessor(leafReader: LeafReader,
                                 fieldName: String) extends Serializable {
@@ -89,9 +31,8 @@ abstract class DocValueAccessor(leafReader: LeafReader,
 
 //TODO: May want to break into a class per dataType if the case matching has
 //TODO: performance implications
-class NumericAccessor(leafReader: LeafReader,
-                      fieldName: String,
-                      dataType: DataType)
+class NumericAccessor[T](leafReader: LeafReader,
+                      fieldName: String)
   extends DocValueAccessor(leafReader, fieldName) {
 
   val docValueReader = DocValues.getNumeric(leafReader, fieldName)
@@ -100,15 +41,7 @@ class NumericAccessor(leafReader: LeafReader,
 
   def extract(docID: Int, offset: Int): Any = {
     assert(offset == 0, s"numeric docvalue accessor non-zero offset $offset")
-    val data = docValueReader.get(docID)
-    dataType match {
-      case i: IntegerType => data.toInt
-      case i: LongType => data
-      case f: FloatType => data.toFloat
-      case d: DoubleType => data.toDouble
-      case dt: TimestampType => new Timestamp(data)
-      case _ => new LuceneDAOException(s"unsupported ${dataType} in numeric accessor")
-    }
+    docValueReader.get(docID).asInstanceOf[T]
   }
 }
 
@@ -127,7 +60,7 @@ class StringAccessor(leafReader: LeafReader,
   }
 }
 
-class BinaryAccessor(leafReader: LeafReader,
+class BinaryAccessor[T: ClassTag](leafReader: LeafReader,
                      fieldName: String,
                      dataType: DataType,
                      ser: SerializerInstance)
@@ -138,19 +71,14 @@ class BinaryAccessor(leafReader: LeafReader,
 
   def extract(docID: Int, offset: Int): Any = {
     assert(offset == 0, s"binary accessor non-zero offset $offset")
-    assert(dataType == new VectorUDT, s"unsupported $dataType in binary accessor ")
     val bytes = docValueReader.get(docID).bytes
-    ser.deserialize[Vector](ByteBuffer.wrap(bytes))
+    ser.deserialize[T](ByteBuffer.wrap(bytes))
   }
 }
 
-//TODO: May want to break into a class per dataType if the case matching has
-//TODO: performance implications
 class ArrayNumericAccessor(leafReader: LeafReader,
-                           fieldName: String,
-                           dataType: DataType)
+                           fieldName: String)
   extends DocValueAccessor(leafReader, fieldName) {
-
   val docValueReader = DocValues.getSortedNumeric(leafReader, fieldName)
 
   def getOffset(docID: Int): Int = {
@@ -160,15 +88,7 @@ class ArrayNumericAccessor(leafReader: LeafReader,
 
   def extract(docID: Int, offset: Int): Any = {
     docValueReader.setDocument(docID)
-    val data = docValueReader.valueAt(offset)
-    dataType match {
-      case i: IntegerType => data.toInt
-      case i: LongType => data
-      case f: FloatType => data.toFloat
-      case d: DoubleType => data.toDouble
-      case dt: TimestampType => new Timestamp(data)
-      case _ => new LuceneDAOException(s"unsupported ${dataType} in numeric array accessor")
-    }
+    docValueReader.valueAt(offset).toInt
   }
 }
 
@@ -178,12 +98,17 @@ object DocValueAccessor extends Serializable {
             dataType: DataType,
             multiValued: Boolean,
             ser: SerializerInstance): DocValueAccessor = {
-    if (multiValued) new ArrayNumericAccessor(leafReader, fieldName, dataType)
+    if (multiValued) new ArrayNumericAccessor(leafReader, fieldName)
     else {
       dataType match {
+        case i: IntegerType => new NumericAccessor[Int](leafReader, fieldName)
+        case l: LongType => new NumericAccessor[Long](leafReader, fieldName)
+        case f: FloatType => new NumericAccessor[Float](leafReader, fieldName)
+        case d: DoubleType => new NumericAccessor[Double](leafReader, fieldName)
+        case ts: TimestampType => new NumericAccessor[Long](leafReader, fieldName)
         case st: StringType => new StringAccessor(leafReader, fieldName, ser)
-        case v: VectorUDT => new BinaryAccessor(leafReader, fieldName, dataType, ser)
-        case _ => new NumericAccessor(leafReader, fieldName, dataType)
+        case v: VectorUDT => new BinaryAccessor[Vector](leafReader, fieldName, dataType, ser)
+        case _ => throw new LuceneDAOException(s"unsupported type ${dataType} for docvalue accessor constructor")
       }
     }
   }

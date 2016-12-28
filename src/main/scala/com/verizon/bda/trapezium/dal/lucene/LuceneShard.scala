@@ -3,7 +3,7 @@ package com.verizon.bda.trapezium.dal.lucene
 import org.apache.lucene.analysis.core.KeywordAnalyzer
 import org.apache.lucene.index._
 import org.apache.lucene.queryparser.classic.QueryParser
-import org.apache.lucene.search.{TopDocs, BooleanQuery, IndexSearcher}
+import org.apache.lucene.search.{BooleanQuery, IndexSearcher}
 import org.apache.spark.Logging
 import org.apache.spark.sql.Row
 
@@ -43,6 +43,45 @@ class LuceneShard(reader: IndexReader,
     }
     log.debug("Hits within partition: " + topDocs.totalHits)
     rows
+  }
+
+  //TODO: Add time filters on group
+  def group(queryStr: String,
+            dimension: String,
+            dimOffset: Int,
+            measure: String,
+            agg: LuceneAggregator): LuceneAggregator = {
+    val sample = 1.0
+    BooleanQuery.setMaxClauseCount(Integer.MAX_VALUE)
+    val maxRowsPerPartition = Math.floor(sample * getIndexReader.numDocs()).toInt
+    val topDocs = search(qp.parse(queryStr), maxRowsPerPartition).scoreDocs
+
+    // TODO: If extract gives me back the data type we are ok defining the aggregation
+    // TODO: In the internal while loops there should be any case class
+    var i = 0
+    while (i < topDocs.size) {
+      val docID = topDocs(i).doc
+      val docMeasure = dvExtractor.extract(measure, docID, 0)
+
+      val offset = dvExtractor.getOffset(dimension, docID)
+      var j = 0
+      while (j < offset) {
+        val idx = dvExtractor.extract(dimension, docID, j).asInstanceOf[Long].toInt
+        agg.update(idx - dimOffset, docMeasure)
+        j += 1
+      }
+      i += 1
+    }
+    agg
+  }
+
+  //TODO: Do we need grouping dimension here as well ?
+  def timeseries(queryStr: String,
+                 minTime: Long,
+                 maxTime: Long,
+                 rollup: Long,
+                 measure: String): Iterator[Row] = {
+    ???
   }
 }
 
