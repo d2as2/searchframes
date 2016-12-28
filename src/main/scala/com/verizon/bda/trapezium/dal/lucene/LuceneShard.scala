@@ -80,8 +80,7 @@ class LuceneShard(reader: IndexReader,
       filter
     }
   }
-
-  //TODO: Push time filters on group
+  
   def group(queryStr: String,
             dimension: String,
             dimOffset: Int,
