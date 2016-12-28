@@ -201,6 +201,49 @@ class LuceneDAO(val location: String,
     }).sum().toInt
   }
 
+  def combOp = (agg: LuceneAggregator,
+                other: LuceneAggregator) => {
+    agg.merge(other)
+  }
+
+  def getAggregator(measure: String): LuceneAggregator = {
+    if (converter.types(measure).dataType == StringType)
+      new CardinalityEstimator
+    else
+      new NumericSum
+  }
+
+  def timeseries(queryStr: String,
+                 minTime: Long,
+                 maxTime: Long,
+                 rollup: Long,
+                 measure: String): Array[Int] = {
+    val dimSize = (maxTime - minTime) % rollup
+    log.info(s"calculated time series size ${dimSize} from [$maxTime, $minTime] with rollup $rollup")
+
+    val seqOp = (agg: LuceneAggregator,
+                 shard: LuceneShard) => {
+      shard.timeseries(
+        queryStr,
+        minTime,
+        maxTime,
+        rollup,
+        measure,
+        agg)
+    }
+
+    val agg = getAggregator(measure)
+
+    agg.init(dimSize.toInt)
+
+    val results = shards.treeAggregate(agg)(seqOp, combOp)
+
+    if (converter.types(measure).dataType == StringType)
+      results.asInstanceOf[CardinalityEstimator].buffer.map(_.cardinality().toInt)
+    else
+      results.asInstanceOf[NumericSum].buffer.map(_.toInt)
+  }
+
   def group(queryStr: String,
             dimension: String,
             measure: String) : Array[Int] = {
@@ -215,20 +258,11 @@ class LuceneDAO(val location: String,
         dimension,
         dimOffset,
         measure,
-        agg)
-    }
-
-    val combOp = (agg: LuceneAggregator,
-                  other: LuceneAggregator) => {
-      agg.merge(other)
+        agg = agg)
     }
 
     //TODO: Aggregator is picked based on the SQL functions sum, countDistinct, count
-    val agg =
-      if (converter.types(measure).dataType == StringType)
-        new CardinalityEstimator
-      else
-        new NumericSum
+    val agg = getAggregator(measure)
 
     //TODO: If aggregator is not initialized from driver and broadcasted, merge fails on NPE
     //TODO: RDD aggregate needs to be looked into
