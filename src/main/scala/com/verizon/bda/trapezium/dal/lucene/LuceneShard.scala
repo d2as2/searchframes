@@ -38,7 +38,10 @@ class LuceneShard(reader: IndexReader,
   assert(timeColumns.size <= 1, s"more than one timestamp columns not supported")
 
   val timeColumn =
-    if (timeColumns.size >= 1) Option(timeColumns.head)
+    if (timeColumns.size >= 1) {
+      log.info(s"timestamp column ${timeColumns.head} selected in dataset")
+      Option(timeColumns.head)
+    }
     else None
 
   def searchDocs(queryStr: String, sample: Double = 1.0): Array[ScoreDoc] = {
@@ -80,7 +83,7 @@ class LuceneShard(reader: IndexReader,
       filter
     }
   }
-  
+
   def group(queryStr: String,
             dimension: String,
             dimOffset: Int,
@@ -114,7 +117,7 @@ class LuceneShard(reader: IndexReader,
     agg
   }
 
-  // Given a timestamp, find timestamp - minTime % rollup to find the index
+  // Given a timestamp, find timestamp - minTime / rollup to find the index
   // statistics of the timestamp column should give minTime and maxTime
   // user specified min and max time overwrite the column stats
   def timeseries(queryStr: String,
@@ -123,7 +126,7 @@ class LuceneShard(reader: IndexReader,
                  rollup: Long,
                  measure: String,
                  agg: LuceneAggregator): LuceneAggregator = {
-    assert(timeColumn == None, s"no timestamp in dataset for time series aagregation")
+    assert(timeColumn != None, s"no timestamp in dataset for time series aggregation")
     val scoredDocs = searchDocs(queryStr)
 
     val filteredDocs = filterTime(scoredDocs, minTime, maxTime)
@@ -136,7 +139,7 @@ class LuceneShard(reader: IndexReader,
       var j = 0
       while (j < offset) {
         val timestamp = dvExtractor.extract(timeColumn.get, docID, j).asInstanceOf[Long]
-        val idx = (timestamp - minTime) % rollup
+        val idx = (timestamp - minTime) / rollup
         agg.update(idx.toInt, docMeasure)
         j += 1
       }

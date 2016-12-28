@@ -98,6 +98,7 @@ object DocValueAccessor extends Serializable {
             dataType: DataType,
             multiValued: Boolean,
             ser: SerializerInstance): DocValueAccessor = {
+    //TODO: Test multivalue time stamp column for optimizing document size
     if (multiValued) new ArrayNumericAccessor(leafReader, fieldName)
     else {
       dataType match {

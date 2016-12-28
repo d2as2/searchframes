@@ -183,6 +183,7 @@ class LuceneDAO(val location: String,
   def search(queryStr: String,
              columns: Seq[String],
              sample: Double): RDD[Row] = {
+    if (shards == null) throw new LuceneDAOException(s"search called with null shards")
     val rows = shards.flatMap((shard: LuceneShard) => {
       converter.setColumns(columns)
       shard.search(queryStr, columns, sample)
@@ -196,16 +197,13 @@ class LuceneDAO(val location: String,
   }
 
   def count(queryStr: String): Int = {
+    if(shards == null) throw new LuceneDAOException(s"count called with null shards")
     shards.map((shard: LuceneShard) => {
       shard.count(qp.parse(queryStr))
     }).sum().toInt
   }
 
-  def combOp = (agg: LuceneAggregator,
-                other: LuceneAggregator) => {
-    agg.merge(other)
-  }
-
+  //TODO: Aggregator will be instantiated based on the operator and measure
   def getAggregator(measure: String): LuceneAggregator = {
     if (converter.types(measure).dataType == StringType)
       new CardinalityEstimator
@@ -213,12 +211,21 @@ class LuceneDAO(val location: String,
       new NumericSum
   }
 
+  //TODO: If combOp is not within function scope, agg broadcast does not happen and NPE is thrown
+  //TODO: Look into treeAggregate
+  def combOp = (agg: LuceneAggregator,
+                other: LuceneAggregator) => {
+    agg.merge(other)
+  }
+
   def timeseries(queryStr: String,
                  minTime: Long,
                  maxTime: Long,
                  rollup: Long,
                  measure: String): Array[Int] = {
-    val dimSize = (maxTime - minTime) % rollup
+    if (shards == null) throw new LuceneDAOException(s"timeseries called with null shards")
+
+    val dimSize = Math.floor((maxTime - minTime) / rollup).toInt
     log.info(s"calculated time series size ${dimSize} from [$maxTime, $minTime] with rollup $rollup")
 
     val seqOp = (agg: LuceneAggregator,
@@ -234,7 +241,7 @@ class LuceneDAO(val location: String,
 
     val agg = getAggregator(measure)
 
-    agg.init(dimSize.toInt)
+    agg.init(dimSize)
 
     val results = shards.treeAggregate(agg)(seqOp, combOp)
 
@@ -247,6 +254,8 @@ class LuceneDAO(val location: String,
   def group(queryStr: String,
             dimension: String,
             measure: String) : Array[Int] = {
+    if(shards == null) throw new LuceneDAOException(s"group called with null shards")
+
     val dimRange = dictionary.getRange(dimension)
     val dimOffset = dimRange._1
     val dimSize = dimRange._2 - dimRange._1 + 1

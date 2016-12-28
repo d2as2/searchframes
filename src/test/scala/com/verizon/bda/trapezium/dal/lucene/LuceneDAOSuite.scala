@@ -10,9 +10,10 @@ import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.sql.SQLContext
 import org.apache.spark.sql.types._
 import org.scalatest.{BeforeAndAfterAll, FunSuite}
-import java.sql.Time
 import org.apache.spark.mllib.linalg.VectorUDT
 import org.apache.spark.mllib.linalg.SparseVector
+import java.sql.Time
+import java.sql.Timestamp
 
 class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfterAll {
   val outputPath = "target/luceneIndexerTest/"
@@ -182,5 +183,68 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
     assert(result2(0) == 1)
     val result3 = dao.group("tld:verizon.com OR tld:amazon.com", "zip", "user")
     assert(result3(0) == 2)
+  }
+
+  test("time series test") {
+    val dimensions = Set("zip", "tld")
+    val indexPath = new Path(outputPath, "time").toString
+
+    val types =
+      Map("time" -> LuceneType(false, TimestampType),
+        "user" -> LuceneType(false, StringType),
+        "zip" -> LuceneType(false, StringType),
+        "tld" -> LuceneType(true, StringType),
+        "visits" -> LuceneType(false, IntegerType))
+
+    val dao = new LuceneDAO(indexPath, dimensions, types)
+
+    val time1 = new Timestamp(100)
+    val time2 = new Timestamp(200)
+    val time3 = new Timestamp(300)
+
+    val df = sqlContext.createDataFrame(
+      Seq((time1, "123", "94555", Array("verizon.com", "google.com"), 8),
+        (time1, "456", "94310", Array("apple.com", "google.com"), 12),
+        (time1, "123", "94555", Array("google.com", "amazon.com"), 6),
+        (time2, "123", "94555", Array("verizon.com", "google.com"), 4),
+        (time2, "456", "94310", Array("apple.com", "google.com"), 4),
+        (time2, "314", "94555", Array("google.com", "amazon.com"), 10),
+        (time3, "456", "94555", Array("verizon.com", "google.com"), 8),
+        (time3, "456", "94310", Array("apple.com", "google.com"), 6),
+        (time3, "456", "94555", Array("google.com", "verizon.com"), 10)))
+      .toDF("time", "user", "zip", "tld", "visits").coalesce(2)
+
+    dao.index(df, indexTime)
+    dao.load(sc)
+
+    val result =
+      dao.timeseries(
+        queryStr = "tld:google.com",
+        minTime = 100,
+        maxTime = 400,
+        rollup = 100,
+        measure = "user")
+
+    /* Expected result
+    time1: 2 [123:2, 456:1]
+    time2: 3 [123:1, 456:1, 314:1]
+    time3: 1 [456:3]
+    */
+    assert(result.length == 3)
+    assert(result === Array(2, 3, 1))
+
+    val result2 =
+      dao.timeseries(
+        queryStr = "tld:verizon.com",
+        minTime = 100,
+        maxTime = 400,
+        rollup = 100,
+        measure = "visits")
+
+    assert(result2.length == 3)
+    /* Expected result
+      time1: 8, time2: 4, time3: 18
+     */
+    assert(result2 === Array(8, 4, 18))
   }
 }
