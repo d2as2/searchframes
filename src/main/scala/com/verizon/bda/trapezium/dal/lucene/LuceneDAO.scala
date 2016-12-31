@@ -51,10 +51,11 @@ class LuceneDAO(val location: String,
 
   //TODO: If index already exist we have to merge dictionary and update indices
   def index(dataframe: DataFrame, time: Time): Unit = {
-    val indexPath = location.stripSuffix("/") + "/" + INDEX_PREFIX
-    val dictionaryPath = location.stripSuffix("/") + "/" + DICTIONARY_PREFIX
+    val locationPath = location.stripSuffix("/") + "/"
+    val indexPath =  locationPath + INDEX_PREFIX
+    val dictionaryPath = locationPath + DICTIONARY_PREFIX
 
-    val path = new HadoopPath(indexPath)
+    val path = new HadoopPath(locationPath)
     val conf = new Configuration
     val fs = FileSystem.get(path.toUri, conf)
     if (fs.exists(path)) {
@@ -62,7 +63,6 @@ class LuceneDAO(val location: String,
       fs.delete(path, true)
     }
     fs.mkdirs(path)
-    FileSystem.closeAll()
 
     dictionary = encodeDictionary(dataframe)
     val dictionaryBr = dataframe.rdd.context.broadcast(dictionary)
@@ -120,6 +120,8 @@ class LuceneDAO(val location: String,
     while (filesList.hasNext())
       log.debug(filesList.next().getPath.toString())
 
+    FileSystem.closeAll()
+
     dictionary.save(dictionaryPath)(dataframe.rdd.sparkContext)
 
     log.info("Number of partitions: " + dataframe.rdd.getNumPartitions)
@@ -174,7 +176,7 @@ class LuceneDAO(val location: String,
       }
       shard
     })
-    shards.cache()
+    shards.persist(StorageLevel.DISK_ONLY)
     log.info("Number of shards: " + shards.count())
   }
 
@@ -225,6 +227,8 @@ class LuceneDAO(val location: String,
                  measure: String): Array[Int] = {
     if (shards == null) throw new LuceneDAOException(s"timeseries called with null shards")
 
+    log.info(s"query ${queryStr} measure ${measure}, time [$minTime, $maxTime] rollup $rollup")
+
     val dimSize = Math.floor((maxTime - minTime) / rollup).toInt
     log.info(s"calculated time series size ${dimSize} from [$maxTime, $minTime] with rollup $rollup")
 
@@ -238,7 +242,7 @@ class LuceneDAO(val location: String,
         measure,
         agg)
     }
-
+    
     val agg = getAggregator(measure)
 
     agg.init(dimSize)
@@ -259,6 +263,8 @@ class LuceneDAO(val location: String,
     val dimRange = dictionary.getRange(dimension)
     val dimOffset = dimRange._1
     val dimSize = dimRange._2 - dimRange._1 + 1
+
+    log.info(s"query ${queryStr} dimension ${dimension}, range [${dimRange._1}, ${dimRange._2}] measure ${measure}")
 
     val seqOp = (agg: LuceneAggregator,
                  shard: LuceneShard) => {

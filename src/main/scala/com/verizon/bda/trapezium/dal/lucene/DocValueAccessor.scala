@@ -6,7 +6,6 @@ import org.apache.lucene.index.{DocValues, LeafReader}
 import org.apache.spark.mllib.linalg.{Vector, VectorUDT}
 import org.apache.spark.serializer.SerializerInstance
 import org.apache.spark.sql.types._
-
 import scala.reflect.ClassTag
 
 /**
@@ -16,12 +15,12 @@ import scala.reflect.ClassTag
  *        data is backed on disk using columnar compression during index time in LuceneDAO
  */
 
-abstract class DocValueAccessor(leafReader: LeafReader,
+abstract class DocValueAccessor(leafReaders: Seq[LeafReader],
                                 fieldName: String) extends Serializable {
-  def extract(docID: Int, offset: Int): Any
+  def extract(docID: Int, shardIndex: Int, offset: Int): Any
 
   //doc value offset for a given accessor, default offset is 1
-  def getOffset(docID: Int): Int
+  def getOffset(docID: Int, shardIndex: Int): Int
 
   //local per partition encoding
   //def size(): size of the doc value vector
@@ -31,84 +30,84 @@ abstract class DocValueAccessor(leafReader: LeafReader,
 
 //TODO: May want to break into a class per dataType if the case matching has
 //TODO: performance implications
-class NumericAccessor[T](leafReader: LeafReader,
+class NumericAccessor(leafReaders: Seq[LeafReader],
                       fieldName: String)
-  extends DocValueAccessor(leafReader, fieldName) {
+  extends DocValueAccessor(leafReaders, fieldName) {
 
-  val docValueReader = DocValues.getNumeric(leafReader, fieldName)
+  val docValueReaders = leafReaders.map(DocValues.getNumeric(_, fieldName))
 
-  def getOffset(docID: Int): Int = 1
+  def getOffset(docID: Int, shardIndex: Int): Int = 1
 
-  def extract(docID: Int, offset: Int): Any = {
+  def extract(docID: Int, shardIndex: Int, offset: Int): Any = {
     assert(offset == 0, s"numeric docvalue accessor non-zero offset $offset")
-    docValueReader.get(docID).asInstanceOf[T]
+    docValueReaders(shardIndex).get(docID)
   }
 }
 
-class StringAccessor(leafReader: LeafReader,
+class StringAccessor(leafReaders: Seq[LeafReader],
                      fieldName: String,
                      ser: SerializerInstance)
-  extends DocValueAccessor(leafReader, fieldName) {
-  val docValueReader = DocValues.getSorted(leafReader, fieldName)
+  extends DocValueAccessor(leafReaders, fieldName) {
+  val docValueReaders = leafReaders.map(DocValues.getSorted(_, fieldName))
 
-  def getOffset(docID: Int): Int = 1
+  def getOffset(docID: Int, shardIndex: Int): Int = 1
 
-  def extract(docID: Int, offset: Int): Any = {
+  def extract(docID: Int, shardIndex: Int, offset: Int): Any = {
     assert(offset == 0, s"string docvalue accessor non-zero offset $offset")
-    val bytes = docValueReader.get(docID).bytes
+    val bytes = docValueReaders(shardIndex).get(docID).bytes
     ser.deserialize[String](ByteBuffer.wrap(bytes))
   }
 }
 
-class BinaryAccessor[T: ClassTag](leafReader: LeafReader,
+class BinaryAccessor[T: ClassTag](leafReaders: Seq[LeafReader],
                      fieldName: String,
                      dataType: DataType,
                      ser: SerializerInstance)
-  extends DocValueAccessor(leafReader, fieldName) {
-  val docValueReader = DocValues.getBinary(leafReader, fieldName)
+  extends DocValueAccessor(leafReaders, fieldName) {
+  val docValueReaders = leafReaders.map(DocValues.getBinary(_, fieldName))
 
-  def getOffset(docID: Int): Int = 1
+  def getOffset(docID: Int, shardIndex: Int): Int = 1
 
-  def extract(docID: Int, offset: Int): Any = {
+  def extract(docID: Int, shardIndex: Int, offset: Int): Any = {
     assert(offset == 0, s"binary accessor non-zero offset $offset")
-    val bytes = docValueReader.get(docID).bytes
+    val bytes = docValueReaders(shardIndex).get(docID).bytes
     ser.deserialize[T](ByteBuffer.wrap(bytes))
   }
 }
 
-class ArrayNumericAccessor(leafReader: LeafReader,
+class ArrayNumericAccessor(leafReaders: Seq[LeafReader],
                            fieldName: String)
-  extends DocValueAccessor(leafReader, fieldName) {
-  val docValueReader = DocValues.getSortedNumeric(leafReader, fieldName)
+  extends DocValueAccessor(leafReaders, fieldName) {
+  val docValueReaders = leafReaders.map(DocValues.getSortedNumeric(_, fieldName))
 
-  def getOffset(docID: Int): Int = {
-    docValueReader.setDocument(docID)
-    docValueReader.count()
+  def getOffset(docID: Int, shardIndex: Int): Int = {
+    docValueReaders(shardIndex).setDocument(docID)
+    docValueReaders(shardIndex).count()
   }
 
-  def extract(docID: Int, offset: Int): Any = {
-    docValueReader.setDocument(docID)
-    docValueReader.valueAt(offset).toInt
+  def extract(docID: Int, shardIndex: Int, offset: Int): Any = {
+    docValueReaders(shardIndex).setDocument(docID)
+    docValueReaders(shardIndex).valueAt(offset)
   }
 }
 
 object DocValueAccessor extends Serializable {
-  def apply(leafReader: LeafReader,
+  def apply(leafReaders: Seq[LeafReader],
             fieldName: String,
             dataType: DataType,
             multiValued: Boolean,
             ser: SerializerInstance): DocValueAccessor = {
     //TODO: Test multivalue time stamp column for optimizing document size
-    if (multiValued) new ArrayNumericAccessor(leafReader, fieldName)
+    if (multiValued) new ArrayNumericAccessor(leafReaders, fieldName)
     else {
       dataType match {
-        case i: IntegerType => new NumericAccessor[Int](leafReader, fieldName)
-        case l: LongType => new NumericAccessor[Long](leafReader, fieldName)
-        case f: FloatType => new NumericAccessor[Float](leafReader, fieldName)
-        case d: DoubleType => new NumericAccessor[Double](leafReader, fieldName)
-        case ts: TimestampType => new NumericAccessor[Long](leafReader, fieldName)
-        case st: StringType => new StringAccessor(leafReader, fieldName, ser)
-        case v: VectorUDT => new BinaryAccessor[Vector](leafReader, fieldName, dataType, ser)
+        case i: IntegerType => new NumericAccessor(leafReaders, fieldName)
+        case l: LongType => new NumericAccessor(leafReaders, fieldName)
+        case f: FloatType => new NumericAccessor(leafReaders, fieldName)
+        case d: DoubleType => new NumericAccessor(leafReaders, fieldName)
+        case ts: TimestampType => new NumericAccessor(leafReaders, fieldName)
+        case st: StringType => new StringAccessor(leafReaders, fieldName, ser)
+        case v: VectorUDT => new BinaryAccessor[Vector](leafReaders, fieldName, dataType, ser)
         case _ => throw new LuceneDAOException(s"unsupported type ${dataType} for docvalue accessor constructor")
       }
     }

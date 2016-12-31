@@ -60,7 +60,7 @@ trait SparkLuceneConverter extends Serializable with Logging {
       case f: FloatType =>
         new FloatDocValuesField(name, value.asInstanceOf[Float])
       case d: DoubleType =>
-        new DoubleDocValuesField(name, value.asInstanceOf[Double])
+        new DoubleDocValuesField(name, value.asInstanceOf[Long])
       case dt: TimestampType =>
         new NumericDocValuesField(name, value.asInstanceOf[Timestamp].getTime)
       case st: StringType =>

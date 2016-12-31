@@ -14,7 +14,14 @@ import scala.collection.mutable.{ArrayBuffer => MArray, Map => MMap}
 
 //TODO: Use prefix tree (trie) to decrease the dictionary size
 
-case class FeatureAttr(dictionaryPos: Int, featureOffset: Int) extends Serializable
+case class FeatureAttr(dictionaryPos: Int, featureOffset: Int) extends Serializable {
+  val max = dictionaryPos + featureOffset
+
+  def contains(id: Int): Boolean = {
+    if (id >= dictionaryPos && id < max) return true
+    else false
+  }
+}
 
 class DictionaryManager extends Serializable {
   /**
