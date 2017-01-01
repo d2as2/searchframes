@@ -83,9 +83,11 @@ class LuceneDAO(val location: String,
       log.info(s"Created ${shuffleIndexPath} to write lucene partition $i shuffle")
       converter.setSchema(inSchema)
       converter.setDictionary(dictionaryBr.value)
+      log.info(s"codec used for index creation ${indexWriterConfig.getCodec.getName}")
 
       val directory = new MMapDirectory(shuffleIndexPath)
       val indexWriter = new IndexWriter(directory, indexWriterConfig)
+
       itr.foreach {
         r => {
           try {
@@ -176,7 +178,8 @@ class LuceneDAO(val location: String,
       }
       shard
     })
-    shards.persist(StorageLevel.DISK_ONLY)
+    //TODO: Make sure DocValue don't use excessive heap space since it should be backed by DISK per documentation
+    shards.cache()
     log.info("Number of shards: " + shards.count())
   }
 
@@ -242,7 +245,7 @@ class LuceneDAO(val location: String,
         measure,
         agg)
     }
-    
+
     val agg = getAggregator(measure)
 
     agg.init(dimSize)

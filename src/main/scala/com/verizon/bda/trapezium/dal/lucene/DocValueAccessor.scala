@@ -28,8 +28,7 @@ abstract class DocValueAccessor(leafReaders: Seq[LeafReader],
   //def encode(localIndex: Int): Int generate global index from local index
 }
 
-//TODO: May want to break into a class per dataType if the case matching has
-//TODO: performance implications
+//NumericAccessor work on Long even if incoming types are Int, Float, Long, Double
 class NumericAccessor(leafReaders: Seq[LeafReader],
                       fieldName: String)
   extends DocValueAccessor(leafReaders, fieldName) {
