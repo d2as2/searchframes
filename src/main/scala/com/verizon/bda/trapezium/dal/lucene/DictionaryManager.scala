@@ -154,11 +154,17 @@ class DictionaryManager extends Serializable {
     val a: Array[String] = Array.fill[String](dictionary.size)("")
 
     dictionary.foreach((x: (String, Int)) => {
-      a((x._2 - offset).toInt) = x._1
+      a((x._2 - offset)) = x._1
     })
 
     featureNameLookup.appendAll(a)
     offset = featureNameLookup.size
+  }
+
+  def clear(): Unit = {
+    namesMap.clear()
+    dictionaries.clear()
+    featureNameLookup.clear()
   }
 
   override def toString: String = {

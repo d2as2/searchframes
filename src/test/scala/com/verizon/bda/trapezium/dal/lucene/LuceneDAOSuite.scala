@@ -150,11 +150,12 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
     dao.index(df, indexTime)
     dao.load(sc)
 
-    val result = dao.group("tld:google.com", "zip", "visits")
-    assert(result.length == 2)
+    val result = dao.group("tld:google.com", "zip", "visits", "sum")
+    assert(result.size == 2)
 
-    val result2 = dao.group("tld:verizon.com", "zip", "visits")
-    assert(result2(0) == 8)
+    val result2 = dao.group("tld:verizon.com", "zip", "visits", "sum")
+    assert(result2("94555") == 8)
+    assert(result2("94310") == 0)
   }
 
   test("cardinality estimator test") {
@@ -177,12 +178,56 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
     dao.index(df, indexTime)
     dao.load(sc)
 
-    val result = dao.group("tld:google.com", "zip", "user")
-    assert(result.length == 2)
-    val result2 = dao.group("tld:amazon.com", "zip", "user")
-    assert(result2(0) == 1)
-    val result3 = dao.group("tld:verizon.com OR tld:amazon.com", "zip", "user")
-    assert(result3(0) == 2)
+    val result = dao.group("tld:google.com", "zip", "user", "cardinality")
+    assert(result.size == 2)
+
+    val result2 = dao.group("tld:amazon.com", "zip", "user", "cardinality")
+    assert(result2("94555") == 1)
+    assert(result2("94310") == 0)
+
+    val result3 = dao.group("tld:verizon.com OR tld:amazon.com", "zip", "user", "cardinality")
+    assert(result3.size == 2)
+  }
+
+  test("cardinality estimator load test") {
+    val dimensions = Set("zip", "tld")
+    val indexPath = new Path(outputPath, "cardinality").toString
+
+    val types =
+      Map("user" -> LuceneType(false, StringType),
+        "zip" -> LuceneType(false, StringType),
+        "tld" -> LuceneType(true, StringType),
+        "visits" -> LuceneType(false, IntegerType))
+
+    val dao = new LuceneDAO(indexPath, dimensions, types)
+    dao.load(sc)
+
+    val result = dao.group("tld:google.com", "zip", "user", "cardinality")
+    assert(result.size == 2)
+
+    val result2 = dao.group("tld:amazon.com", "zip", "user", "cardinality")
+    assert(result2("94555") == 1)
+    assert(result2("94310") == 0)
+
+    val result3 = dao.group("tld:verizon.com OR tld:amazon.com", "zip", "user", "cardinality")
+    assert(result3.size == 2)
+  }
+
+  test("count test") {
+    val dimensions = Set("zip", "tld")
+    val indexPath = new Path(outputPath, "cardinality").toString
+
+    val types =
+      Map("user" -> LuceneType(false, StringType),
+        "zip" -> LuceneType(false, StringType),
+        "tld" -> LuceneType(true, StringType),
+        "visits" -> LuceneType(false, IntegerType))
+
+    val dao = new LuceneDAO(indexPath, dimensions, types)
+    dao.load(sc)
+
+    val result = dao.aggregate("tld:google.com", "user", "count")
+    assert(result == 3)
   }
 
   test("time series test") {
@@ -223,7 +268,8 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
         minTime = 100,
         maxTime = 400,
         rollup = 100,
-        measure = "user")
+        measure = "user",
+        aggFunc = "cardinality")
 
     /* Expected result
     time1: 2 [123:2, 456:1]
@@ -239,7 +285,8 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
         minTime = 100,
         maxTime = 400,
         rollup = 100,
-        measure = "visits")
+        measure = "visits",
+        aggFunc = "sum")
 
     assert(result2.length == 3)
     /* Expected result
