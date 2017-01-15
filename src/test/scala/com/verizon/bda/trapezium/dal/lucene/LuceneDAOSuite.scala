@@ -178,14 +178,14 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
     dao.index(df, indexTime)
     dao.load(sc)
 
-    val result = dao.group("tld:google.com", "zip", "user", "cardinality")
+    val result = dao.group("tld:google.com", "zip", "user", "count_approx")
     assert(result.size == 2)
 
-    val result2 = dao.group("tld:amazon.com", "zip", "user", "cardinality")
+    val result2 = dao.group("tld:amazon.com", "zip", "user", "count_approx")
     assert(result2("94555") == 1)
     assert(result2("94310") == 0)
 
-    val result3 = dao.group("tld:verizon.com OR tld:amazon.com", "zip", "user", "cardinality")
+    val result3 = dao.group("tld:verizon.com OR tld:amazon.com", "zip", "user", "count_approx")
     assert(result3.size == 2)
   }
 
@@ -202,14 +202,14 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
     val dao = new LuceneDAO(indexPath, dimensions, types)
     dao.load(sc)
 
-    val result = dao.group("tld:google.com", "zip", "user", "cardinality")
+    val result = dao.group("tld:google.com", "zip", "user", "count_approx")
     assert(result.size == 2)
 
-    val result2 = dao.group("tld:amazon.com", "zip", "user", "cardinality")
+    val result2 = dao.group("tld:amazon.com", "zip", "user", "count_approx")
     assert(result2("94555") == 1)
     assert(result2("94310") == 0)
 
-    val result3 = dao.group("tld:verizon.com OR tld:amazon.com", "zip", "user", "cardinality")
+    val result3 = dao.group("tld:verizon.com OR tld:amazon.com", "zip", "user", "count_approx")
     assert(result3.size == 2)
   }
 
@@ -269,7 +269,7 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
         maxTime = 400,
         rollup = 100,
         measure = "user",
-        aggFunc = "cardinality")
+        aggFunc = "count_approx")
 
     /* Expected result
     time1: 2 [123:2, 456:1]

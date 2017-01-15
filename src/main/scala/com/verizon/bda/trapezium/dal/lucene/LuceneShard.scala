@@ -187,11 +187,17 @@ class LuceneShard(reader: IndexReader,
                  measure: String,
                  agg: OLAPAggregator): OLAPAggregator = {
     assert(timeColumn != None, s"no timestamp in dataset for time series aggregation")
+    val scoreStart = System.nanoTime()
     val scoredDocs = searchDocs(queryStr)
+    log.info(f"document scoring time: ${(System.nanoTime() - scoreStart) * 1e-9}%6.3f sec")
+
+    val filterStart = System.nanoTime()
     val filteredDocs = filterTime(scoredDocs, minTime, maxTime)
+    log.info(f"document filtering time :${(System.nanoTime() - filterStart) * 1e-9}%6.3f sec")
 
     log.info(s"scored docs ${scoredDocs.length} filtered docs ${filteredDocs.length}")
 
+    val aggStart = System.nanoTime()
     var i = 0
     while (i < filteredDocs.size) {
       val docID = filteredDocs(i).doc
@@ -206,6 +212,7 @@ class LuceneShard(reader: IndexReader,
       }
       i += 1
     }
+    log.info(f"document aggregation time :${(System.nanoTime() - aggStart) * 1e-9}%6.3f sec")
     agg
   }
 }

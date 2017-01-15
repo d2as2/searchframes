@@ -211,15 +211,20 @@ class LuceneDAO(val location: String,
     }).sum().toInt
   }
 
+  private val aggFunctions = Set("sum", "count_approx", "count")
+
   //TODO: Aggregator will be instantiated based on the operator and measure
   //Eventually they will extend Expression from Catalyst but run columnar processing
   private def getAggregator(aggFunc: String,
                     measure: String): OLAPAggregator = {
-    aggFunc match {
-      case "sum" => new Sum
-      case "cardinality" => new CardinalityEstimator
-      case "count" => new Count
-    }
+    if (aggFunctions.contains(aggFunc)) {
+      aggFunc match {
+        case "sum" => new Sum
+        case "count_approx" => new CardinalityEstimator
+        case "count" => new Cardinality
+      }
+    } else
+      throw new LuceneDAOException(s"unsupported aggFunc $aggFunc supported ${aggFunctions.mkString(",")}")
   }
 
   //TODO: If combOp is not within function scope, agg broadcast does not happen and NPE is thrown
@@ -285,7 +290,7 @@ class LuceneDAO(val location: String,
     val results = shards.treeAggregate(agg)(seqOp, combOp)
     results.eval()(0)
   }
-  
+
   def group(queryStr: String,
             dimension: String,
             measure: String,

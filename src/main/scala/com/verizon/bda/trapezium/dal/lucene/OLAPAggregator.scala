@@ -56,7 +56,7 @@ class Sum extends OLAPAggregator {
 }
 
 // TODO: For approximate count use HLL otherwise use HashSet
-class Count extends OLAPAggregator {
+class Cardinality extends OLAPAggregator {
   var counter: Array[HashSet[Any]] = _
 
   override def init(size: Int): Unit = {
@@ -67,7 +67,7 @@ class Count extends OLAPAggregator {
     counter(idx).add(input)
   }
 
-  def merge(other: OLAPAggregator): Count = {
+  def merge(other: OLAPAggregator): Cardinality = {
     var idx = 0
     while (idx < counter.size) {
       other.get(idx).asInstanceOf[HashSet[Any]].foreach(elem => {
