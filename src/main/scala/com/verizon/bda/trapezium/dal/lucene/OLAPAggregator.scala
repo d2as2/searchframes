@@ -8,9 +8,10 @@ import com.clearspring.analytics.stream.cardinality.HyperLogLogPlus
  *         aggregator functions for lucene dao
  */
 
-//TODO: OLAPAggregator should extend SparkSQL AggregateFunction and select
-//ImperativeAggregate / DeclarativeAggregate
-
+//TODO: OLAPAggregator should extend SparkSQL AggregateFunction and
+//use ImperativeAggregate / DeclarativeAggregate
+//TODO: StatFunction in SparkSQL is using ML style aggregate pattern toRDD.aggregate
+//but not using treeAggregate, consult mailing list
 abstract class OLAPAggregator extends Serializable {
   //mutableAggBuffer is of size dim1 x dim2 x dim3, It's value is based on measure ?
   //def initialize(mutableAggBuffer: InternalRow)

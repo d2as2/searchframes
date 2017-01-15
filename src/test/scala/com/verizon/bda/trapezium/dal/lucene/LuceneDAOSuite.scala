@@ -294,4 +294,6 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
      */
     assert(result2 === Array(8, 4, 18))
   }
+
+  //TODO: Add a local test where multiple-leaf readers are generated
 }

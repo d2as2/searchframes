@@ -3,7 +3,7 @@ package com.verizon.bda.trapezium.dal.lucene
 import org.apache.lucene.analysis.core.KeywordAnalyzer
 import org.apache.lucene.index._
 import org.apache.lucene.queryparser.classic.QueryParser
-import org.apache.lucene.search.{ScoreDoc, BooleanQuery, IndexSearcher}
+import org.apache.lucene.search.{BooleanQuery, IndexSearcher, ScoreDoc}
 import org.apache.spark.Logging
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types.TimestampType
@@ -71,7 +71,20 @@ class LuceneShard(reader: IndexReader,
     }
     else None
 
-  def searchDocs(queryStr: String, sample: Double = 1.0): Array[ScoreDoc] = {
+  def searchDocs(queryStr: String,
+                 sample: Double = 1.0): Array[Int] = {
+    //TODO: Provide sampling tricks that give provable count stats without affecting accuracy
+    //val maxRowsPerPartition = Math.floor(sample * getIndexReader.numDocs()).toInt
+
+    BooleanQuery.setMaxClauseCount(Integer.MAX_VALUE)
+    val query = rewrite(qp.parse(queryStr))
+    val collectionManager = new OLAPCollectionManager(reader.maxDoc())
+    //TODO: this.executorService to run searches in multiple cores while partitions are done
+    //at executor level
+    search(query, collectionManager)
+  }
+
+  def searchDocsWithRelevance(queryStr: String, sample: Double = 1.0): Array[ScoreDoc] = {
     BooleanQuery.setMaxClauseCount(Integer.MAX_VALUE)
     val maxRowsPerPartition = Math.floor(sample * getIndexReader.numDocs()).toInt
     val topDocs = search(qp.parse(queryStr), maxRowsPerPartition)
@@ -80,13 +93,13 @@ class LuceneShard(reader: IndexReader,
   }
 
   def search(queryStr: String, columns: Seq[String], sample: Double = 1.0): Iterator[Row] = {
-    val scoredDocs = searchDocs(queryStr, sample)
+    val docs = searchDocs(queryStr, sample)
     // TODO: Scoring of docs is not required for queries that are not extracting relevance
-    val rows = scoredDocs.iterator.map { d =>
+    val rows = docs.iterator.map { d =>
       // Extract stored fields
-      val stored = converter.docToRow(doc(d.doc))
-      reader.document(d.doc)
-      val docValued = dvExtractor.extract(columns, d.doc)
+      val stored = converter.docToRow(doc(d))
+      reader.document(d)
+      val docValued = dvExtractor.extract(columns, d)
       Row.merge(stored, docValued)
     }
     rows
@@ -94,11 +107,10 @@ class LuceneShard(reader: IndexReader,
 
   // If timestamp < minTime skip
   // If timestamp >= maxTime skip
-  def filterTime(scored: Array[ScoreDoc],
+  def filterTime(docs: Array[Int],
                  minTime: Long,
-                 maxTime: Long): Array[ScoreDoc] = {
-    scored.filter { case (doc) =>
-      val docID = doc.doc
+                 maxTime: Long): Array[Int] = {
+    docs.filter { case (docID) =>
       val offset = dvExtractor.getOffset(timeColumn.get, docID)
       var filter = true
       var i = 0
@@ -118,13 +130,13 @@ class LuceneShard(reader: IndexReader,
                 measure: String,
                 agg: OLAPAggregator): OLAPAggregator = {
     val scoreStart = System.nanoTime()
-    val scoredDocs = searchDocs(queryStr)
+    val docs = searchDocs(queryStr)
     log.info(f"document scoring time: ${(System.nanoTime() - scoreStart) * 1e-9}%6.3f sec")
 
     val aggStart = System.nanoTime()
     var i = 0
-    while (i < scoredDocs.size) {
-      val docID = scoredDocs(i).doc
+    while (i < docs.size) {
+      val docID = docs(i)
       val docMeasure = dvExtractor.extract(measure, docID, 0)
       agg.update(0, docMeasure)
       i += 1
@@ -142,24 +154,24 @@ class LuceneShard(reader: IndexReader,
             agg: OLAPAggregator): OLAPAggregator = {
 
     val scoreStart = System.nanoTime()
-    val scoredDocs = searchDocs(queryStr)
+    val docs = searchDocs(queryStr)
     log.info(f"document scoring time: ${(System.nanoTime() - scoreStart) * 1e-9}%6.3f sec")
 
     val filterStart = System.nanoTime()
     val filteredDocs = if (timeColumn == None) {
       log.warn(s"no timestamp in dataset for time [$minTime, $maxTime] filter")
-      scoredDocs
+      docs
     } else {
-      filterTime(scoredDocs, minTime, maxTime)
+      filterTime(docs, minTime, maxTime)
     }
     log.info(f"document filtering time :${(System.nanoTime() - filterStart) * 1e-9}%6.3f sec")
 
-    log.info(s"scored docs ${scoredDocs.length} filtered docs ${filteredDocs.length}")
+    log.info(s"scored docs ${docs.length} filtered docs ${filteredDocs.length}")
 
     val aggStart = System.nanoTime()
     var i = 0
     while (i < filteredDocs.size) {
-      val docID = filteredDocs(i).doc
+      val docID = filteredDocs(i)
       val docMeasure = dvExtractor.extract(measure, docID, 0)
       val offset = dvExtractor.getOffset(dimension, docID)
       var j = 0
@@ -188,19 +200,19 @@ class LuceneShard(reader: IndexReader,
                  agg: OLAPAggregator): OLAPAggregator = {
     assert(timeColumn != None, s"no timestamp in dataset for time series aggregation")
     val scoreStart = System.nanoTime()
-    val scoredDocs = searchDocs(queryStr)
+    val docs = searchDocs(queryStr)
     log.info(f"document scoring time: ${(System.nanoTime() - scoreStart) * 1e-9}%6.3f sec")
 
     val filterStart = System.nanoTime()
-    val filteredDocs = filterTime(scoredDocs, minTime, maxTime)
+    val filteredDocs = filterTime(docs, minTime, maxTime)
     log.info(f"document filtering time :${(System.nanoTime() - filterStart) * 1e-9}%6.3f sec")
 
-    log.info(s"scored docs ${scoredDocs.length} filtered docs ${filteredDocs.length}")
+    log.info(s"scored docs ${docs.length} filtered docs ${filteredDocs.length}")
 
     val aggStart = System.nanoTime()
     var i = 0
     while (i < filteredDocs.size) {
-      val docID = filteredDocs(i).doc
+      val docID = filteredDocs(i)
       val docMeasure = dvExtractor.extract(measure, docID, 0)
       val offset = dvExtractor.getOffset(timeColumn.get, docID)
       var j = 0
