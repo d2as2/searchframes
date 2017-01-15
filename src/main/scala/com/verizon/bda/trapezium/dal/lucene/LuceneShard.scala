@@ -105,8 +105,9 @@ class LuceneShard(reader: IndexReader,
     rows
   }
 
-  // If timestamp < minTime skip
-  // If timestamp >= maxTime skip
+  // If timestamp < minTime skip, timestamp >= maxTime skip
+  // TODO: For numeric fields, they can be passed through such filters as well, look into
+  // integrating time filter as dataframe filter
   def filterTime(docs: Array[Int],
                  minTime: Long,
                  maxTime: Long): Array[Int] = {
@@ -126,6 +127,7 @@ class LuceneShard(reader: IndexReader,
   }
 
   //TODO: Multiple measures can be aggregated
+  //TODO: Generalize it to dataframe aggregate
   def aggregate(queryStr: String,
                 measure: String,
                 agg: OLAPAggregator): OLAPAggregator = {
@@ -145,6 +147,7 @@ class LuceneShard(reader: IndexReader,
     agg
   }
 
+  //TODO: Generalize it to dataframe groupBy
   def group(queryStr: String,
             dimension: String,
             dimOffset: Int,
