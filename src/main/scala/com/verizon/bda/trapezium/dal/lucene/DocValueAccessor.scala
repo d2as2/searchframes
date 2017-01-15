@@ -81,7 +81,8 @@ class StringAccessor(luceneReaders: Seq[LuceneReader],
     assert(offset == 0, s"string docvalue accessor non-zero offset $offset")
     val shardIndex = locate(docID)
     val bytes = docValueReaders(shardIndex).get(docID - lower(shardIndex)).bytes
-    ser.deserialize[String](ByteBuffer.wrap(bytes))
+    //For native types don't use Kryo
+    new String(bytes, "UTF-8")
   }
 }
 

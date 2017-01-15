@@ -64,7 +64,7 @@ trait SparkLuceneConverter extends Serializable with Logging {
       case dt: TimestampType =>
         new NumericDocValuesField(name, value.asInstanceOf[Timestamp].getTime)
       case st: StringType =>
-        val bytes = ser.serialize(value).array()
+        val bytes = value.asInstanceOf[String].getBytes("UTF-8")
         new SortedDocValuesField(name, new BytesRef(bytes))
       case _ => logInfo(s"serializing ${dataType.typeName} as binary doc value field")
         val bytes = ser.serialize(value).array()
