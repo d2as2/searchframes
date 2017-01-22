@@ -22,6 +22,7 @@ import org.apache.spark.rdd.RDD.numericRDDToDoubleRDDFunctions
 import org.apache.spark.sql.{DataFrame, Row}
 
 // noinspection ScalaStyle
+@deprecated
 class LuceneIndexer(env: String, val indexPathInput: String,
                     val hdfsPath: String,
                     defaultSearchField: String,
