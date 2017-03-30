@@ -1,6 +1,7 @@
 package com.verizon.bda.trapezium.dal.lucene
 
 import com.verizon.bda.trapezium.dal.exceptions.LuceneDAOException
+import org.apache.log4j.Logger
 import org.apache.lucene.document.Document
 import org.apache.spark.SparkConf
 import org.apache.spark.serializer.KryoSerializer
@@ -38,7 +39,11 @@ class OLAPConverter(val dimensions: Set[String],
       //dictionary encoding on dimension doc values
       val feature = value.asInstanceOf[String]
       val idx = dict.indexOf(fieldName, feature)
-      doc.add(toDocValueField(fieldName, IntegerType, multiValued, idx))
+      if (idx == -1) {
+        logError(s"Doc feature ${fieldName}:${feature} not found in the dictionary")
+      } else {
+        doc.add(toDocValueField(fieldName, IntegerType, multiValued, idx))
+      }
     }
     else if (types.contains(fieldName)) {
       doc.add(toDocValueField(fieldName, dataType, multiValued, value))
