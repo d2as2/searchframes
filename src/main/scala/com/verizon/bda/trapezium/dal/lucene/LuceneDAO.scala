@@ -38,14 +38,18 @@ class LuceneDAO(val location: String,
   private var dictionary: DictionaryManager = _
 
   def encodeDictionary(df: DataFrame): DictionaryManager = {
-    val dm = new DictionaryManager
+    if (dictionary == null) dictionary = new DictionaryManager
     dimensions.foreach(f => {
       val selectedDim =
         if (types(f).multiValued) df.select(explode(df(f)))
         else df.select(df(f))
-      dm.addToDictionary(f, selectedDim.rdd.map(_.getAs[String](0)))
+      dictionary.addToDictionary(f, selectedDim.rdd.map(_.getAs[String](0)))
     })
-    dm
+    dictionary
+  }
+
+  def setDictionary(dm: DictionaryManager): Unit = {
+    dictionary = dm
   }
 
   //TODO: If index already exist we have to merge dictionary and update indices
@@ -63,7 +67,8 @@ class LuceneDAO(val location: String,
     }
     fs.mkdirs(path)
 
-    dictionary = encodeDictionary(dataframe)
+    encodeDictionary(dataframe)
+
     val dictionaryBr = dataframe.rdd.context.broadcast(dictionary)
 
     val parallelism = dataframe.rdd.context.defaultParallelism
