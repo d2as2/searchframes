@@ -60,7 +60,7 @@ trait SparkLuceneConverter extends Serializable with Logging {
       case f: FloatType =>
         new FloatDocValuesField(name, value.asInstanceOf[Float])
       case d: DoubleType =>
-        new DoubleDocValuesField(name, value.asInstanceOf[Long])
+        new DoubleDocValuesField(name, value.asInstanceOf[Double])
       case dt: TimestampType =>
         new NumericDocValuesField(name, value.asInstanceOf[Timestamp].getTime)
       case st: StringType =>
@@ -72,8 +72,11 @@ trait SparkLuceneConverter extends Serializable with Logging {
     }
 
     if (multivalued) {
-      assert(dataType == IntegerType, "multi-valued dimensions must be integer")
-      new SortedNumericDocValuesField(name, value.asInstanceOf[Int])
+      //assert(dataType == IntegerType, "multi-valued dimensions must be integer")
+      if (dataType == IntegerType)
+        new SortedNumericDocValuesField(name, value.asInstanceOf[Int])
+      else
+        new SortedNumericDocValuesField(name, value.asInstanceOf[Double].toLong)
     }
     else field
   }
