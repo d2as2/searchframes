@@ -256,6 +256,60 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
     assert(result == 3)
   }
 
+
+  test("multivalue dimension test") {
+    val indexPath = new Path(outputPath, "multivalue").toString
+    val dimensions = Set("zip", "tld")
+    val types =
+      Map("user" -> LuceneType(false, StringType),
+        "zip" -> LuceneType(true, StringType),
+        "tld" -> LuceneType(true, StringType),
+        "visits" -> LuceneType(false, StringType),
+        "featureVector" -> LuceneType(false, new VectorUDT()))
+
+    val dao = new LuceneDAO(indexPath, dimensions, types)
+
+    val df = sqlContext.createDataFrame(
+      Seq(("123", Array("94555", "94301"), Array("verizon.com", "google.com"), "8", Vectors.sparse(4, Array(0, 1, 2, 3), Array(2.0, 4.0, 7.0, 9.0))),
+        ("456", Array("95014", "94301"), Array("yahoo.com", "google.com"), "2", Vectors.sparse(4, Array(4, 1, 5, 3), Array(9.0, 8.0, 2.0, 1.0))),
+        ("789", Array("94403", "94405"), Array("facebook.com", "att.com"), "3", Vectors.sparse(4, Array(6, 7, 8, 9), Array(1.0, 1.0, 6.0, 3.0)))))
+      .toDF("user", "zip", "tld", "visits", "featureVector").coalesce(2)
+
+    dao.index(df, indexTime)
+    dao.load(sc)
+
+    val resultRDD = dao.search("(tld:google.com) AND (zip:95014)")
+    assert(resultRDD.collect().size == 1)
+    assert(dao.search("*:*").count == 3)
+  }
+
+  test("multivalue dimension test with null dimensions") {
+    val indexPath = new Path(outputPath, "multivalue").toString
+    val dimensions = Set("zip", "tld")
+    val types =
+      Map("user" -> LuceneType(false, StringType),
+        "zip" -> LuceneType(true, StringType),
+        "tld" -> LuceneType(true, StringType),
+        "visits" -> LuceneType(false, StringType),
+        "featureVector" -> LuceneType(false, new VectorUDT()))
+
+    val dao = new LuceneDAO(indexPath, dimensions, types)
+
+    val df = sqlContext.createDataFrame(
+      Seq(("123", Array("94555", "94301"), Array("verizon.com", "google.com"), "8", Vectors.sparse(4, Array(0, 1, 2, 3), Array(2.0, 4.0, 7.0, 9.0))),
+        ("456", Array("95014", "94301"), Array("yahoo.com", "google.com"), "2", Vectors.sparse(4, Array(4, 1, 5, 3), Array(9.0, 8.0, 2.0, 1.0))),
+        ("555", null, null, "", Vectors.sparse(0, Array(), Array()))))
+      .toDF("user", "zip", "tld", "visits", "featureVector").coalesce(2)
+
+    dao.index(df, indexTime)
+    dao.load(sc)
+
+    val resultRDD = dao.search("(tld:google.com) AND (zip:95014)")
+    assert(resultRDD.collect().size == 1)
+    assert(dao.search("*:*").count == 3)
+  }
+
+
   test("time series test") {
     val dimensions = Set("zip", "tld")
     val indexPath = new Path(outputPath, "time").toString
