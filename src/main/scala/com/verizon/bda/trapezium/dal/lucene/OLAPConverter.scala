@@ -34,23 +34,25 @@ class OLAPConverter(val dimensions: Set[String],
                multiValued: Boolean): Unit = {
     // dimensions will be indexed and docvalued based on dictionary encoding
     // measures will be docvalued
-    if (dimensions.contains(fieldName)) {
-      doc.add(toIndexedField(fieldName, dataType, value))
-      //dictionary encoding on dimension doc values
-      val feature = value.asInstanceOf[String]
-      val idx = dict.indexOf(fieldName, feature)
-      if (idx == -1) {
-        logError(s"Doc feature ${fieldName}:${feature} not found in the dictionary")
-      } else {
-        doc.add(toDocValueField(fieldName, IntegerType, multiValued, idx))
+    if (value != null) {
+      if (dimensions.contains(fieldName)) {
+        doc.add(toIndexedField(fieldName, dataType, value))
+        //dictionary encoding on dimension doc values
+        val feature = value.asInstanceOf[String]
+        val idx = dict.indexOf(fieldName, feature)
+        if (idx == -1) {
+          logError(s"Doc feature ${fieldName}:${feature} not found in the dictionary")
+        } else {
+          doc.add(toDocValueField(fieldName, IntegerType, multiValued, idx))
+        }
       }
-    }
-    else if (types.contains(fieldName)) {
-      doc.add(toDocValueField(fieldName, dataType, multiValued, value))
-    }
-    else {
-      logInfo(s"${fieldName} is not in dimensions/measures")
-      doc.add(toStoredField(fieldName, dataType, value))
+      else if (types.contains(fieldName)) {
+        doc.add(toDocValueField(fieldName, dataType, multiValued, value))
+      }
+      else {
+        logInfo(s"${fieldName} is not in dimensions/measures")
+        doc.add(toStoredField(fieldName, dataType, value))
+      }
     }
   }
 

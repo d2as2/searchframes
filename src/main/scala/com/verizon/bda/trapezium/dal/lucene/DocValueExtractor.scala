@@ -40,9 +40,12 @@ class DocValueExtractor(leafReaders: Seq[LuceneReader],
   private def extractDimension(docID: Int, column: String): Any = {
     assert(dimensions.contains(column), s"$column is not a dimension")
     val offset = dvMap(column).getOffset(docID)
-    if (offset > 1)
+    if (offset == 1)
+      dvMap(column).extract(docID, 0)
+    else if (offset > 1)
       Seq((0 until offset).map(dvMap(column).extract(docID, _)): _*)
-    else dvMap(column).extract(docID, offset - 1)
+    else if (offset == 0)
+      -1L // this happens only when the ArrayNumeric field is Null. return -1L as dummy feature index
   }
 
   def extract(columns: Seq[String], docID: Int): Row = {
