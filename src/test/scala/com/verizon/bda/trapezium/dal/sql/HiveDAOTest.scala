@@ -90,6 +90,7 @@ class HiveDAOTest extends FunSuite with MLlibTestSparkContext {
 
     hiveContext.sql(s"""create table if not exists ${tableName}
                   (c1 string) partitioned by (c2 string, c3 int)""")
+
     testDao.write(testdf, Seq("c2", "c3"))
     testDao.deletePartition("c2 = 'b'")
     assert(hiveContext.table(tableName).where("c3 = 1")
