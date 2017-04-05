@@ -10,6 +10,7 @@ import org.apache.lucene.index._
 import org.apache.lucene.index.IndexWriterConfig.OpenMode
 import org.apache.lucene.queryparser.classic.QueryParser
 import org.apache.lucene.store.MMapDirectory
+import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.functions._
@@ -18,6 +19,8 @@ import org.apache.spark.storage.StorageLevel
 import java.sql.Time
 import java.io.File
 import org.apache.spark.util.DalUtils
+
+import scala.collection.mutable
 
 class LuceneDAO(val location: String,
                 val dimensions: Set[String],
@@ -50,6 +53,51 @@ class LuceneDAO(val location: String,
 
   def setDictionary(dm: DictionaryManager): Unit = {
     dictionary = dm
+  }
+
+
+  /**
+   * Udf to compute the indices and values for sparse vector.
+   */
+  private val featureVectorUdf = udf { (s: mutable.WrappedArray[String],
+                                m: mutable.WrappedArray[Map[String, Double]]) =>
+    val indVal: Array[(Int, Double)] = s.zip(m).flatMap { x =>
+      if (x._2 == null)
+        Map[Int, Double]()
+      else {
+        val output: Map[Int, Double] = x._2.map(kv => (dictionary.indexOf(x._1, kv._1), kv._2))
+        output.filter(_._1 >= 0)
+      }
+    }.sortBy(_._1).toArray
+    Vectors.sparse(indVal.size, indVal.map(kv => kv._1), indVal.map(kv => kv._2))
+    // e.g. Vectors.sparse(3, Array(1, 3, 5), Array(4.0, 7.0, 9.0))
+  }
+
+
+  def transform(df: DataFrame): DataFrame = {
+
+    val featureColumns = dictionary.getNames.toArray
+
+    val inputWithFeatures = df.withColumn("arrFeatures",
+      array(featureColumns.map(df(_)): _*))
+    val inputWithFeatureVector = inputWithFeatures.withColumn("featureVector",
+      featureVectorUdf(array(featureColumns.map(lit(_)): _*), inputWithFeatures("arrFeatures")))
+
+    val keys = udf {
+      (s: Map[String, Double]) => {
+        if (s == null) Seq.empty[String]  // this is a workaround
+        else s.keys.toSeq
+      }
+    }
+
+    var outputDf = inputWithFeatureVector.drop("arrFeatures")
+    featureColumns.foreach { c: String =>
+      outputDf = outputDf.withColumn(c+"tmp", keys(inputWithFeatureVector(c)))
+        .drop(c)
+        .withColumnRenamed(c+"tmp", c)
+    }
+
+    outputDf
   }
 
   //TODO: If index already exist we have to merge dictionary and update indices

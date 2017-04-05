@@ -14,6 +14,8 @@ import org.apache.spark.sql.types._
 import org.apache.lucene.document._
 import java.sql.Timestamp
 
+case class LuceneType(multiValued: Boolean, dataType: DataType)
+
 trait SparkLuceneConverter extends Serializable with Logging {
 
   def rowToDoc(r: Row): Document
@@ -86,4 +88,6 @@ trait SparkLuceneConverter extends Serializable with Logging {
                     value: Any): Field = {
     new StoredField(name, ser.serialize(value).array())
   }
+
+
 }

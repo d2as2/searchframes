@@ -7,7 +7,8 @@ import org.apache.commons.io.FileUtils
 import org.apache.hadoop.fs.Path
 import org.apache.lucene.search.IndexSearcher
 import org.apache.spark.mllib.linalg.Vectors
-import org.apache.spark.sql.SQLContext
+import org.apache.spark.sql.{DataFrame, SQLContext}
+import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
 import org.scalatest.{BeforeAndAfterAll, FunSuite}
 import org.apache.spark.mllib.linalg.VectorUDT
@@ -69,6 +70,45 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
 
     assert(idx1 >= zipRange._1 && idx1 < zipRange._2)
     assert(idx2 >= tldRange._1 && idx2 < tldRange._2)
+  }
+
+  test("transform test") {
+    val dimensions = Set("zip", "tld")
+    val types =
+      Map("user" -> LuceneType(false, StringType),
+        "zip" -> LuceneType(false, StringType),
+        "tld" -> LuceneType(true, StringType),
+        "appname" -> LuceneType(true, StringType),
+        "visits" -> LuceneType(false, IntegerType))
+    val features = Array("tld", "appname")
+
+    val dictPath = new Path(outputPath, "hdfs").toString
+
+    val dao = new LuceneDAO(dictPath, dimensions, types)
+
+    val df = sqlContext.createDataFrame(
+      Seq(("123", "94555", Map("verizon.com" -> 1.0, "google.com" -> 4.0), Map("instagram" -> 4.0), 8),
+        ("456", "94310", Map("apple.com" -> 8.0, "google.com" -> 3.0), Map[String, Double](), 7))).
+      toDF("user", "zip", "tld", "appname", "visits")
+
+    val dm: DictionaryManager = new DictionaryManager
+
+    features.foreach { c: String =>
+      val explodedDf = df.select(explode(df(c))).select("key")
+      val rdd = explodedDf.rdd.map(_.getAs[String](0))
+      dm.addToDictionary(c, rdd)
+    }
+
+    dao.setDictionary(dm)
+    val transformed: DataFrame = dao.transform(df)
+
+    transformed.show()
+
+    val result1 = transformed.filter("user = '123'").first().getAs[SparseVector]("featureVector").toString
+    assert(result1 == "(3,[0,2,3],[4.0,1.0,4.0])")
+
+    val result2 = transformed.filter("user = '123'").first().getAs[Seq[String]]("tld").toString
+    assert(result2 == "WrappedArray(verizon.com, google.com)")
   }
 
   test("index test") {

@@ -37,6 +37,9 @@ class DictionaryManager extends Serializable {
   private var dictionaries: MArray[Map[String, Int]] = MArray[Map[String, Int]]()
   private val featureNameLookup: MArray[String] = MArray[String]()
 
+
+  def getNames(): Set[String] = namesMap.keySet.toSet
+
   /**
     * Function to create index for a dimension and append to current dictionary.
     *

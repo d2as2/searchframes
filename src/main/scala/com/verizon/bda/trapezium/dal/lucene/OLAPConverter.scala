@@ -13,7 +13,7 @@ import org.apache.spark.sql.types._
  *         Converters for dataframe to OLAP compatible column stores
  */
 
-case class LuceneType(multiValued: Boolean, dataType: DataType)
+
 
 //dimensions needs to be indexed, dictionary-mapped and docvalued
 //measures should be docvalued
