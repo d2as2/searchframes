@@ -74,11 +74,8 @@ trait SparkLuceneConverter extends Serializable with Logging {
     }
 
     if (multivalued) {
-      //assert(dataType == IntegerType, "multi-valued dimensions must be integer")
-      if (dataType == IntegerType)
-        new SortedNumericDocValuesField(name, value.asInstanceOf[Int])
-      else
-        new SortedNumericDocValuesField(name, value.asInstanceOf[Double].toLong)
+      assert(dataType == IntegerType, "multi-valued dimensions must be integer")
+      new SortedNumericDocValuesField(name, value.asInstanceOf[Int])
     }
     else field
   }
