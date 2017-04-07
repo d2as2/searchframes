@@ -3,7 +3,6 @@ package com.verizon.bda.trapezium.dal.lucene
 import java.io.File
 
 import com.holdenkarau.spark.testing.SharedSparkContext
-import com.verizon.bda.trapezium.dal.lucene.DictionaryManager
 import org.apache.commons.io.FileUtils
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.{ArrayType, StringType, StructField, StructType}
