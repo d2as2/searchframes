@@ -12,7 +12,8 @@ import org.apache.hadoop.fs.Path
 import org.apache.lucene.document.{Document, StringField}
 import org.apache.lucene.document._
 import org.apache.lucene.search.IndexSearcher
-import org.apache.spark.serializer.SerializerInstance
+import org.apache.spark.SparkConf
+import org.apache.spark.serializer.{KryoSerializer, SerializerInstance}
 import org.apache.spark.sql.{Row, SQLContext}
 import org.apache.spark.sql.types._
 import org.scalatest.{BeforeAndAfterAll, FunSuite}
@@ -20,7 +21,7 @@ import org.scalatest.{BeforeAndAfterAll, FunSuite}
 import scala.collection.JavaConverters._
 
 class TestConverter extends SparkLuceneConverter {
-  val ser: SerializerInstance = null
+  @transient lazy val ser: SerializerInstance = new KryoSerializer(new SparkConf()).newInstance()
 
   override def rowToDoc(r: Row): Document = {
     val d = new Document()

@@ -43,15 +43,16 @@ class LuceneDAO(val location: String,
       val selectedDim =
         if (types(f).multiValued) df.select(explode(df(f)))
         else df.select(df(f))
-      dm.addToDictionary(f, selectedDim.rdd.map(_.getAs[String](0)))
+      val filteredDim = selectedDim.rdd.map(_.getAs[String](0)).filter(_ != null)
+      dm.addToDictionary(f, filteredDim)
     })
     dm
   }
 
-  //TODO: If index already exist we have to merge dictionary and update indices
+  // TODO: If index already exist we have to merge dictionary and update indices
   def index(dataframe: DataFrame, time: Time): Unit = {
     val locationPath = location.stripSuffix("/") + "/"
-    val indexPath =  locationPath + INDEX_PREFIX
+    val indexPath = locationPath + INDEX_PREFIX
     val dictionaryPath = locationPath + DICTIONARY_PREFIX
 
     val path = new HadoopPath(locationPath)
@@ -94,7 +95,8 @@ class LuceneDAO(val location: String,
             indexWriter.addDocument(d);
           } catch {
             case e: Throwable => {
-              throw new LuceneDAOException(s"Error with adding row ${r} to document ${e.getStackTraceString}")
+              throw new LuceneDAOException(s"Error with adding row ${r} " +
+                s"to document ${e.getStackTraceString}")
             }
           }
         }
@@ -128,7 +130,7 @@ class LuceneDAO(val location: String,
     log.info("Number of partitions: " + dataframe.rdd.getNumPartitions)
   }
 
-  //TODO: load logic will move to LuceneRDD
+  // TODO: load logic will move to LuceneRDD
   private var shards : RDD[LuceneShard] = _
 
   def load(sc: SparkContext): Unit = {
@@ -160,7 +162,8 @@ class LuceneDAO(val location: String,
 
       val conf = new Configuration
       val shard: Option[LuceneShard] = {
-        log.info(s"Copying data from deep storage: ${hdfsPath} to local shuffle: ${shuffleIndexPath}")
+        log.info(s"Copying data from deep storage: ${hdfsPath} to " +
+          s"local shuffle: ${shuffleIndexPath}")
         try {
           FileSystem.get(conf).copyToLocalFile(false,
             new HadoopPath(hdfsPath),
@@ -170,13 +173,13 @@ class LuceneDAO(val location: String,
           Some(LuceneShard(reader, converter))
         } catch {
           case e: IOException =>
-            throw new LuceneDAOException(s"Copy from: ${hdfsPath} to local shuffle: ${shuffleIndexPath} failed")
+            throw new LuceneDAOException(s"Copy from: ${hdfsPath} to local " +
+              s"shuffle: ${shuffleIndexPath} failed")
           case x: Throwable => throw new RuntimeException(x)
         }
       }
       shard
     })
-    //TODO: Make sure DocValue don't use excessive heap space since it should be backed by DISK per documentation
     shards.cache()
     log.info("Number of shards: " + shards.count())
     if (dictionary == null) dictionary = new DictionaryManager
@@ -199,7 +202,7 @@ class LuceneDAO(val location: String,
     rows
   }
 
-  //search a query and retrieve for all dimensions + measures
+  // search a query and retrieve for all dimensions + measures
   def search(queryStr: String, sample: Double = 1.0) : RDD[Row] = {
     search(queryStr, types.keys.toSeq, sample)
   }
@@ -211,10 +214,10 @@ class LuceneDAO(val location: String,
     }).sum().toInt
   }
 
-  private val aggFunctions = Set("sum", "count_approx", "count")
+  private val aggFunctions = Set("sum", "count_approx", "count", "sketch")
 
-  //TODO: Aggregator will be instantiated based on the operator and measure
-  //Eventually they will extend Expression from Catalyst but run columnar processing
+  // TODO: Aggregator will be instantiated based on the operator and measure
+  // Eventually they will extend Expression from Catalyst but run columnar processing
   private def getAggregator(aggFunc: String,
                     measure: String): OLAPAggregator = {
     if (aggFunctions.contains(aggFunc)) {
@@ -222,19 +225,22 @@ class LuceneDAO(val location: String,
         case "sum" => new Sum
         case "count_approx" => new CardinalityEstimator
         case "count" => new Cardinality
+        case "sketch" => new SketchAggregator
       }
-    } else
-      throw new LuceneDAOException(s"unsupported aggFunc $aggFunc supported ${aggFunctions.mkString(",")}")
+    } else {
+      throw new LuceneDAOException(s"unsupported aggFunc $aggFunc " +
+        s"supported ${aggFunctions.mkString(",")}")
+    }
   }
 
-  //TODO: If combOp is not within function scope, agg broadcast does not happen and NPE is thrown
-  //TODO: Look into treeAggregate
+  // TODO: If combOp is not within function scope, agg broadcast does not happen and NPE is thrown
+  // TODO: Look into treeAggregate
   private def combOp = (agg: OLAPAggregator,
                 other: OLAPAggregator) => {
     agg.merge(other)
   }
 
-  //TODO: time-series for multiple measure can be aggregated in same call
+  // TODO: time-series for multiple measure can be aggregated in same call
   def timeseries(queryStr: String,
                  minTime: Long,
                  maxTime: Long,
@@ -246,7 +252,8 @@ class LuceneDAO(val location: String,
     log.info(s"query ${queryStr} measure ${measure}, time [$minTime, $maxTime] rollup $rollup")
 
     val dimSize = Math.floor((maxTime - minTime) / rollup).toInt
-    log.info(s"calculated time series size ${dimSize} from [$maxTime, $minTime] with rollup $rollup")
+    log.info(s"Calculated time series size ${dimSize} " +
+      s"from [$maxTime, $minTime] with rollup $rollup")
 
     val seqOp = (agg: OLAPAggregator,
                  shard: LuceneShard) => {
@@ -267,7 +274,7 @@ class LuceneDAO(val location: String,
     results.eval
   }
 
-  //TODO: Multiple  measures can be aggregated at same time
+  // TODO: Multiple  measures can be aggregated at same time
   def aggregate(queryStr: String,
                 measure: String,
                 aggFunc: String): Any = {
@@ -301,7 +308,8 @@ class LuceneDAO(val location: String,
     val dimOffset = dimRange._1
     val dimSize = dimRange._2 - dimRange._1 + 1
 
-    log.info(s"query ${queryStr} dimension ${dimension}, range [${dimRange._1}, ${dimRange._2}] measure ${measure}")
+    log.info(s"query ${queryStr} dimension ${dimension}, " +
+      s"range [${dimRange._1}, ${dimRange._2}] measure ${measure}")
 
     val seqOp = (agg: OLAPAggregator,
                  shard: LuceneShard) => {
@@ -313,11 +321,11 @@ class LuceneDAO(val location: String,
         agg = agg)
     }
 
-    //TODO: Aggregator is picked based on the SQL functions sum, countDistinct, count
+    // TODO: Aggregator is picked based on the SQL functions sum, countDistinct, count
     val agg = getAggregator(aggFunc, measure)
 
-    //TODO: If aggregator is not initialized from driver and broadcasted, merge fails on NPE
-    //TODO: RDD aggregate needs to be looked into
+    // TODO: If aggregator is not initialized from driver and broadcasted, merge fails on NPE
+    // TODO: RDD aggregate needs to be looked into
     agg.init(dimSize)
 
     val results = shards.treeAggregate(agg)(seqOp, combOp)
@@ -331,5 +339,3 @@ class LuceneDAO(val location: String,
     transformed
   }
 }
-
-

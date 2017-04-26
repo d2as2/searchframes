@@ -5,6 +5,8 @@ package com.verizon.bda.trapezium.dal.lucene
  *         15 Dec 2016 debasish83 Converter for OLAP queries supporting indexed, DocValues and stored fields
  */
 
+import java.nio.ByteBuffer
+
 import com.verizon.bda.trapezium.dal.exceptions.LuceneDAOException
 import org.apache.lucene.util.BytesRef
 import org.apache.spark.Logging
@@ -14,7 +16,7 @@ import org.apache.spark.sql.types._
 import org.apache.lucene.document._
 import java.sql.Timestamp
 
-trait SparkLuceneConverter extends Serializable with Logging {
+trait SparkLuceneConverter extends SparkSQLProjections with Serializable with Logging {
 
   def rowToDoc(r: Row): Document
 
@@ -31,17 +33,17 @@ trait SparkLuceneConverter extends Serializable with Logging {
                      store: Field.Store = Field.Store.NO): Field = {
     dataType match {
       // String is saved as standard reverse index from search engines
-      case s: StringType =>
+      case StringType =>
         new StringField(name, value.asInstanceOf[String], store)
       // On integer, long, float and double we do want to push range queries and indexing distinct
       // value makes no sense
-      case i: IntegerType =>
+      case IntegerType =>
         new IntField(name, value.asInstanceOf[Int], store)
-      case l: LongType =>
+      case LongType =>
         new LongField(name, value.asInstanceOf[Long], store)
-      case f: FloatType =>
+      case FloatType =>
         new FloatField(name, value.asInstanceOf[Float], store)
-      case d: DoubleType =>
+      case DoubleType =>
         new DoubleField(name, value.asInstanceOf[Double], store)
       case _ =>
         throw new LuceneDAOException(s"unsupported sparksql ${dataType} for indexed field")
@@ -53,19 +55,28 @@ trait SparkLuceneConverter extends Serializable with Logging {
                       multivalued: Boolean,
                       value: Any): Field = {
     val field = dataType match {
-      case i: IntegerType =>
+      case IntegerType =>
         new NumericDocValuesField(name, value.asInstanceOf[Int])
-      case l: LongType =>
+      case LongType =>
         new NumericDocValuesField(name, value.asInstanceOf[Long])
-      case f: FloatType =>
+      case FloatType =>
         new FloatDocValuesField(name, value.asInstanceOf[Float])
-      case d: DoubleType =>
-        new DoubleDocValuesField(name, value.asInstanceOf[Long])
-      case dt: TimestampType =>
+      case DoubleType =>
+        new DoubleDocValuesField(name, value.asInstanceOf[Double])
+      case TimestampType =>
         new NumericDocValuesField(name, value.asInstanceOf[Timestamp].getTime)
-      case st: StringType =>
+      case StringType =>
         val bytes = value.asInstanceOf[String].getBytes("UTF-8")
         new SortedDocValuesField(name, new BytesRef(bytes))
+      // For sketches (HLL/MinHash/BitMap) we use BinaryType to ser/deser in DataFrame
+      case BinaryType =>
+        val bytes = value.asInstanceOf[Array[Byte]]
+        new BinaryDocValuesField(name, new BytesRef(bytes))
+      case VectorType =>
+        // Use Kryo by commenting VectorType if SparkSQLProjection does not perform well
+        // val bytes = ser.serialize(value).array()
+        val bytes = VectorProjection(VectorType.serialize(value)).getBytes
+        new BinaryDocValuesField(name, new BytesRef(bytes))
       case _ => logInfo(s"serializing ${dataType.typeName} as binary doc value field")
         val bytes = ser.serialize(value).array()
         new BinaryDocValuesField(name, new BytesRef(bytes))

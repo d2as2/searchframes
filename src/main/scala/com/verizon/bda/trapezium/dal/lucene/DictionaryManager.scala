@@ -12,7 +12,7 @@ import scala.collection.mutable.{ArrayBuffer => MArray, Map => MMap}
   *         debasish83 12/22/16 Used natively in LuceneDAO for dictionary encoding
   */
 
-//TODO: Use prefix tree (trie) to decrease the dictionary size
+// TODO: Use prefix tree (trie) to decrease the dictionary size
 
 case class FeatureAttr(dictionaryPos: Int, featureOffset: Int) extends Serializable {
   val max = dictionaryPos + featureOffset
