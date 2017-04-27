@@ -11,6 +11,7 @@ import org.apache.lucene.index.IndexWriterConfig.OpenMode
 import org.apache.lucene.queryparser.classic.QueryParser
 import org.apache.lucene.store.MMapDirectory
 import org.apache.spark.mllib.linalg.Vectors
+import org.apache.spark.sql.types.{ArrayType,StructField,StructType}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.functions._
@@ -23,8 +24,9 @@ import org.apache.spark.util.DalUtils
 import scala.collection.mutable
 
 class LuceneDAO(val location: String,
-                val dimensions: Set[String],
-                val types: Map[String, LuceneType],
+                val searchFields: Set[String],
+                val searchAndStoredFields: Set[String],
+                val storedFields: Set[String],
                 storageLevel: StorageLevel = StorageLevel.DISK_ONLY) extends Serializable {
   @transient lazy val log = Logger.getLogger(classOf[LuceneDAO])
 
@@ -35,17 +37,21 @@ class LuceneDAO(val location: String,
 
   val INDEX_PREFIX = "index"
   val DICTIONARY_PREFIX = "dictionary"
+  val SCHEMA_PREFIX = "schema"
 
-  val converter = OLAPConverter(dimensions, types)
+  val converter = OLAPConverter(searchFields, searchAndStoredFields, storedFields)
 
   private var dictionary: DictionaryManager = _
 
   def encodeDictionary(df: DataFrame): DictionaryManager = {
     if (dictionary == null) dictionary = new DictionaryManager
-    dimensions.foreach(f => {
+    (searchFields++searchAndStoredFields).foreach(f => {
       val selectedDim =
-        if (types(f).multiValued) df.select(explode(df(f)))
-        else df.select(df(f))
+        if (df.schema(f).dataType.isInstanceOf[ArrayType]) {
+          df.select(explode(df(f)))
+        } else {
+          df.select(df(f))
+        }
       dictionary.addToDictionary(f, selectedDim.rdd.map(_.getAs[String](0)))
     })
     dictionary
@@ -105,6 +111,7 @@ class LuceneDAO(val location: String,
     val locationPath = location.stripSuffix("/") + "/"
     val indexPath =  locationPath + INDEX_PREFIX
     val dictionaryPath = locationPath + DICTIONARY_PREFIX
+    val schemaPath = locationPath + SCHEMA_PREFIX
 
     val path = new HadoopPath(locationPath)
     val conf = new Configuration
@@ -117,8 +124,8 @@ class LuceneDAO(val location: String,
 
     encodeDictionary(dataframe)
 
+    val sc:SparkContext = dataframe.rdd.sparkContext
     val dictionaryBr = dataframe.rdd.context.broadcast(dictionary)
-
     val parallelism = dataframe.rdd.context.defaultParallelism
     val inSchema = dataframe.schema
 
@@ -176,7 +183,10 @@ class LuceneDAO(val location: String,
 
     FileSystem.closeAll()
 
-    dictionary.save(dictionaryPath)(dataframe.rdd.sparkContext)
+    dictionary.save(dictionaryPath)(sc)
+
+    // save the schema object
+    sc.parallelize(dataframe.schema, 1).saveAsObjectFile(schemaPath)
 
     log.info("Number of partitions: " + dataframe.rdd.getNumPartitions)
   }
@@ -187,6 +197,13 @@ class LuceneDAO(val location: String,
   def load(sc: SparkContext): Unit = {
     val indexPath = location.stripSuffix("/") + "/" + INDEX_PREFIX
     val dictionaryPath = location.stripSuffix("/") + "/" + DICTIONARY_PREFIX
+    val schemaPath = location.stripSuffix("/") + "/" + SCHEMA_PREFIX
+
+    // load the schema object into RDD
+    val schemaRDD = sc.objectFile(schemaPath).map{x: Any => x.asInstanceOf[StructField]}
+    val schema = StructType(schemaRDD.collect)
+
+    converter.setSchema(schema)
 
     val indexDir = new HadoopPath(indexPath)
     val fs = FileSystem.get(indexDir.toUri, sc.hadoopConfiguration)
@@ -252,9 +269,9 @@ class LuceneDAO(val location: String,
     rows
   }
 
-  //search a query and retrieve for all dimensions + measures
+  //search a query and retrieve for all stored fields
   def search(queryStr: String, sample: Double = 1.0) : RDD[Row] = {
-    search(queryStr, types.keys.toSeq, sample)
+    search(queryStr, storedFields.toSeq ++ searchAndStoredFields.toSeq, sample)
   }
 
   def count(queryStr: String): Int = {

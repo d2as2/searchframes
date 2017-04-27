@@ -6,13 +6,10 @@ import com.holdenkarau.spark.testing.SharedSparkContext
 import org.apache.commons.io.FileUtils
 import org.apache.hadoop.fs.Path
 import org.apache.lucene.search.IndexSearcher
-import org.apache.spark.mllib.linalg.Vectors
+import org.apache.spark.mllib.linalg.{Vectors, SparseVector}
 import org.apache.spark.sql.{DataFrame, SQLContext}
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types._
 import org.scalatest.{BeforeAndAfterAll, FunSuite}
-import org.apache.spark.mllib.linalg.VectorUDT
-import org.apache.spark.mllib.linalg.SparseVector
 import java.sql.Time
 import java.sql.Timestamp
 
@@ -44,15 +41,11 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
 
   test("DictionaryEncoding") {
     val dimensions = Set("zip", "tld")
-
-    val types =
-      Map("user" -> LuceneType(false, StringType),
-        "zip" -> LuceneType(false, StringType),
-        "tld" -> LuceneType(true, StringType),
-        "visits" -> LuceneType(false, IntegerType))
+    val storedDimensions = Set.empty[String]
+    val measures = Set("visits")
 
     val dictPath = new Path(outputPath, "hdfs").toString
-    val dao = new LuceneDAO(dictPath, dimensions, types)
+    val dao = new LuceneDAO(dictPath, dimensions, storedDimensions, measures)
 
     val df = sqlContext.createDataFrame(
       Seq(("123", "94555", Array("verizon.com", "google.com"), 8),
@@ -73,18 +66,15 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
   }
 
   test("transform test") {
-    val dimensions = Set("zip", "tld")
-    val types =
-      Map("user" -> LuceneType(false, StringType),
-        "zip" -> LuceneType(false, StringType),
-        "tld" -> LuceneType(true, StringType),
-        "appname" -> LuceneType(true, StringType),
-        "visits" -> LuceneType(false, IntegerType))
+    val dimensions = Set("zip", "tld", "appname")
+    val storedDimensions = Set.empty[String]
+    val measures = Set("visits")
+
     val features = Array("tld", "appname")
 
     val dictPath = new Path(outputPath, "hdfs").toString
 
-    val dao = new LuceneDAO(dictPath, dimensions, types)
+    val dao = new LuceneDAO(dictPath, dimensions, storedDimensions, measures)
 
     val df = sqlContext.createDataFrame(
       Seq(("123", "94555", Map("verizon.com" -> 1.0, "google.com" -> 4.0), Map("instagram" -> 4.0), 8),
@@ -113,15 +103,11 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
 
   test("index test") {
     val dimensions = Set("zip", "tld")
-
-    val types =
-      Map("user" -> LuceneType(false, StringType),
-        "zip" -> LuceneType(false, StringType),
-        "tld" -> LuceneType(true, StringType),
-        "visits" -> LuceneType(false, IntegerType))
+    val storedDimensions = Set.empty[String]
+    val measures = Set("user","visits")
 
     val indexPath = new Path(outputPath, "hdfs").toString
-    val dao = new LuceneDAO(indexPath, dimensions, types)
+    val dao = new LuceneDAO(indexPath, dimensions, storedDimensions, measures)
 
     // With coalesce > 2 partition run and 0 leafReader causes
     // maxHits = 0 on which an assertion is thrown
@@ -148,11 +134,8 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
     val indexPath = new Path(outputPath, "vectors").toString
 
     val dimensions = Set("zip")
-
-    val types =
-      Map("user" -> LuceneType(false, StringType),
-        "zip" -> LuceneType(false, StringType),
-        "visits" -> LuceneType(false, new VectorUDT()))
+    val storedDimensions = Set.empty[String]
+    val measures = Set("user", "visits")
 
     val sv = Vectors.sparse(2, Array(2, 4), Array(5.0, 8.0))
     val user1 = ("123", "94555", sv)
@@ -161,32 +144,29 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
       Seq(user1, user2))
       .toDF("user", "zip", "visits").coalesce(2)
 
-    val dao = new LuceneDAO(indexPath, dimensions, types)
+    val dao = new LuceneDAO(indexPath, dimensions, storedDimensions, measures)
     dao.index(df2, indexTime)
     dao.load(sc)
 
     val row = dao.search("zip:94555").collect()(0)
 
     assert(row.getAs[String](0) == "123")
-    assert(row.getAs[SparseVector](2) == sv)
+    assert(row.getAs[SparseVector](1) == sv)
   }
 
   test("numeric sum test") {
     val dimensions = Set("zip", "tld")
-    val indexPath = new Path(outputPath, "numeric").toString
+    val storedDimensions = Set.empty[String]
+    val measures = Set("visits")
 
-    val types =
-      Map("user" -> LuceneType(false, StringType),
-        "zip" -> LuceneType(false, StringType),
-        "tld" -> LuceneType(true, StringType),
-        "visits" -> LuceneType(false, IntegerType))
+    val indexPath = new Path(outputPath, "numeric").toString
 
     val df = sqlContext.createDataFrame(
       Seq(("123", "94555", Array("verizon.com", "google.com"), 8),
         ("456", "94310", Array("apple.com", "google.com"), 12)))
       .toDF("user", "zip", "tld", "visits").coalesce(2)
 
-    val dao = new LuceneDAO(indexPath, dimensions, types)
+    val dao = new LuceneDAO(indexPath, dimensions, storedDimensions, measures)
     dao.index(df, indexTime)
     dao.load(sc)
 
@@ -200,15 +180,12 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
 
   test("cardinality estimator test") {
     val dimensions = Set("zip", "tld")
+    val storedDimensions = Set.empty[String]
+    val measures = Set("user","visits")
+
     val indexPath = new Path(outputPath, "cardinality").toString
 
-    val types =
-      Map("user" -> LuceneType(false, StringType),
-        "zip" -> LuceneType(false, StringType),
-        "tld" -> LuceneType(true, StringType),
-        "visits" -> LuceneType(false, IntegerType))
-
-    val dao = new LuceneDAO(indexPath, dimensions, types)
+    val dao = new LuceneDAO(indexPath, dimensions, storedDimensions, measures)
 
     val df = sqlContext.createDataFrame(
       Seq(("123", "94555", Array("verizon.com", "google.com"), 8),
@@ -257,15 +234,12 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
 
   test("cardinality estimator load test") {
     val dimensions = Set("zip", "tld")
+    val storedDimensions = Set.empty[String]
+    val measures = Set("user", "visits")
+
     val indexPath = new Path(outputPath, "cardinality").toString
 
-    val types =
-      Map("user" -> LuceneType(false, StringType),
-        "zip" -> LuceneType(false, StringType),
-        "tld" -> LuceneType(true, StringType),
-        "visits" -> LuceneType(false, IntegerType))
-
-    val dao = new LuceneDAO(indexPath, dimensions, types)
+    val dao = new LuceneDAO(indexPath, dimensions, storedDimensions, measures)
     dao.load(sc)
 
     val result = dao.group("tld:google.com", "zip", "user", "count_approx")
@@ -281,15 +255,12 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
 
   test("count test") {
     val dimensions = Set("zip", "tld")
+    val storedDimensions = Set.empty[String]
+    val measures = Set("user", "visits")
+
     val indexPath = new Path(outputPath, "cardinality").toString
 
-    val types =
-      Map("user" -> LuceneType(false, StringType),
-        "zip" -> LuceneType(false, StringType),
-        "tld" -> LuceneType(true, StringType),
-        "visits" -> LuceneType(false, IntegerType))
-
-    val dao = new LuceneDAO(indexPath, dimensions, types)
+    val dao = new LuceneDAO(indexPath, dimensions, storedDimensions, measures)
     dao.load(sc)
 
     val result = dao.aggregate("tld:google.com", "user", "count")
@@ -300,14 +271,10 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
   test("multivalue dimension test") {
     val indexPath = new Path(outputPath, "multivalue").toString
     val dimensions = Set("zip", "tld")
-    val types =
-      Map("user" -> LuceneType(false, StringType),
-        "zip" -> LuceneType(true, StringType),
-        "tld" -> LuceneType(true, StringType),
-        "visits" -> LuceneType(false, StringType),
-        "featureVector" -> LuceneType(false, new VectorUDT()))
+    val storedDimensions = Set.empty[String]
+    val measures = Set("visits", "featureVector")
 
-    val dao = new LuceneDAO(indexPath, dimensions, types)
+    val dao = new LuceneDAO(indexPath, dimensions, storedDimensions, measures)
 
     val df = sqlContext.createDataFrame(
       Seq(("123", Array("94555", "94301"), Array("verizon.com", "google.com"), "8", Vectors.sparse(4, Array(0, 1, 2, 3), Array(2.0, 4.0, 7.0, 9.0))),
@@ -326,14 +293,10 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
   test("multivalue dimension test with null dimensions") {
     val indexPath = new Path(outputPath, "multivalue").toString
     val dimensions = Set("zip", "tld")
-    val types =
-      Map("user" -> LuceneType(false, StringType),
-        "zip" -> LuceneType(true, StringType),
-        "tld" -> LuceneType(true, StringType),
-        "visits" -> LuceneType(false, StringType),
-        "featureVector" -> LuceneType(false, new VectorUDT()))
+    val storedDimensions = Set.empty[String]
+    val measures = Set("visits", "featureVector")
 
-    val dao = new LuceneDAO(indexPath, dimensions, types)
+    val dao = new LuceneDAO(indexPath, dimensions, storedDimensions, measures)
 
     val df = sqlContext.createDataFrame(
       Seq(("123", Array("94555", "94301"), Array("verizon.com", "google.com"), "8", Vectors.sparse(4, Array(0, 1, 2, 3), Array(2.0, 4.0, 7.0, 9.0))),
@@ -352,16 +315,11 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
 
   test("time series test") {
     val dimensions = Set("zip", "tld")
+    val storedDimensions = Set("user")
+    val measures = Set("time","visits")
     val indexPath = new Path(outputPath, "time").toString
 
-    val types =
-      Map("time" -> LuceneType(false, TimestampType),
-        "user" -> LuceneType(false, StringType),
-        "zip" -> LuceneType(false, StringType),
-        "tld" -> LuceneType(true, StringType),
-        "visits" -> LuceneType(false, IntegerType))
-
-    val dao = new LuceneDAO(indexPath, dimensions, types)
+    val dao = new LuceneDAO(indexPath, dimensions, storedDimensions, measures)
 
     val time1 = new Timestamp(100)
     val time2 = new Timestamp(200)
@@ -415,7 +373,35 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
     assert(result2 === Array(8, 4, 18))
   }
 
+  test("null value test") {
+    val dimensions = Set("zip", "tld")
+    val storedDimensions = Set("user")
+    val measures = Set("visits", "featureVector")
+
+    val indexPath = new Path(outputPath, "nullvalue").toString
+    val dao = new LuceneDAO(indexPath, dimensions, storedDimensions, measures)
+
+    val df = sqlContext.createDataFrame(
+      Seq(("123", null, Array("verizon.com", "google.com"), 8, Vectors.sparse(2, Array(0, 1), Array(2.0, 4.0))),
+        ("123", "94301", Array("apple.com", "google.com"), 8, Vectors.sparse(3, Array(1, 3, 4), Array(2.0, 4.0, 6.0))),
+        ("456", "94310", Array.empty[String], 12, Vectors.sparse(1, Array(2), Array(9.0))),
+        ("314", null, null, 0, Vectors.sparse(0, Array(), Array()))))
+      .toDF("user", "zip", "tld", "visits", "featureVector").coalesce(2)
+
+    dao.index(df, indexTime)
+    dao.load(sc)
+
+    val result1 = dao.search("(tld:google.com) OR (zip:94310)")
+    assert(result1.collect().size == 3)
+    val result2 = dao.search("(tld:google.com) AND (zip:94310)")
+    assert(result2.collect().size == 0)
+    assert(dao.search("*:*").count == 4)
+
+    val resultCount1 = dao.aggregate("tld:google.com", "user", "count")
+    assert(resultCount1 == 1)
+  }
+
+
   //TODO: Add a local test where multiple-leaf readers are generated by modifying IndexWriterConfig
 
-  //TODO: Add a local test with null as values
 }

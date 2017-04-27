@@ -1,8 +1,7 @@
 package com.verizon.bda.trapezium.dal.lucene
 
-import com.verizon.bda.trapezium.dal.exceptions.LuceneDAOException
 import org.apache.log4j.Logger
-import org.apache.lucene.document.Document
+import org.apache.lucene.document.{Field, Document}
 import org.apache.spark.SparkConf
 import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.sql.Row
@@ -20,7 +19,8 @@ import org.apache.spark.sql.types._
 //the types on dimension and measures must be SparkSQL compatible
 //dimensions are a subset of types.keySet
 class OLAPConverter(val dimensions: Set[String],
-                    val types: Map[String, LuceneType],
+                    val storedDimensions: Set[String],
+                    val measures: Set[String],
                     val serializer: KryoSerializer) extends SparkLuceneConverter {
   //TODO: Use SparkSQL Expression encoder in place of Kryo to serialize/deserialize to native UnsafeRow
   // val encoder: ExpressionEncoder[Row] = RowEncoder(dfSchema)
@@ -35,8 +35,12 @@ class OLAPConverter(val dimensions: Set[String],
     // dimensions will be indexed and docvalued based on dictionary encoding
     // measures will be docvalued
     if (value != null) {
-      if (dimensions.contains(fieldName)) {
-        doc.add(toIndexedField(fieldName, dataType, value))
+      if (dimensions.contains(fieldName) || storedDimensions.contains(fieldName)) {
+        // create indexed field
+        if (dimensions.contains(fieldName))
+          doc.add(toIndexedField(fieldName, dataType, value, Field.Store.NO))
+        else
+          doc.add(toIndexedField(fieldName, dataType, value, Field.Store.YES))
         //dictionary encoding on dimension doc values
         val feature = value.asInstanceOf[String]
         val idx = dict.indexOf(fieldName, feature)
@@ -45,13 +49,10 @@ class OLAPConverter(val dimensions: Set[String],
         } else {
           doc.add(toDocValueField(fieldName, IntegerType, multiValued, idx))
         }
-      }
-      else if (types.contains(fieldName)) {
-        doc.add(toDocValueField(fieldName, dataType, multiValued, value))
-      }
-      else {
-        logInfo(s"${fieldName} is not in dimensions/measures")
+      } else if (measures.contains(fieldName)) {
+        logInfo(s"${fieldName} is not in dimensions")
         doc.add(toStoredField(fieldName, dataType, value))
+        doc.add(toDocValueField(fieldName, dataType, multiValued, value))
       }
     }
   }
@@ -110,27 +111,15 @@ class OLAPConverter(val dimensions: Set[String],
     Row.empty
   }
 
-  override def schema: StructType = {
-    val sparkTypes = columns.map((column) => {
-      if (dimensions.contains(column)) {
-        // multivalue dimension
-        assert(types(column).dataType == IntegerType, s"dimension ${column} is not integer type")
-        if (types(column).multiValued) StructField(column, ArrayType(IntegerType), false)
-        else StructField(column, IntegerType, false)
-      } else if (types.contains(column)) {
-        StructField(column, types(column).dataType)
-      } else {
-        throw new LuceneDAOException("query columns are not dimension/measure")
-      }
-    })
-    StructType(sparkTypes)
-  }
+  override def schema: StructType = inputSchema
+
 }
 
 object OLAPConverter {
   def apply(dimensions: Set[String],
-            types: Map[String, LuceneType]): OLAPConverter = {
+            storedDimensions: Set[String],
+            measures: Set[String]): OLAPConverter = {
     val ser = new KryoSerializer(new SparkConf())
-    new OLAPConverter(dimensions, types, ser)
+    new OLAPConverter(dimensions, storedDimensions, measures, ser)
   }
 }

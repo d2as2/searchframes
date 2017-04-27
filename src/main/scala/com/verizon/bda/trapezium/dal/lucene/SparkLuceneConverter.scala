@@ -30,7 +30,7 @@ trait SparkLuceneConverter extends Serializable with Logging {
   def toIndexedField(name: String,
                      dataType: DataType,
                      value: Any,
-                     store: Field.Store = Field.Store.NO): Field = {
+                     store: Field.Store): Field = {
     dataType match {
       // String is saved as standard reverse index from search engines
       case s: StringType =>
