@@ -45,16 +45,16 @@ class DictionaryManager extends Serializable {
     */
   def addToDictionary(name: String, rdd: RDD[String]): Unit = {
 
-    require(!dictionaries.contains(name), s"Dictionary already created for ${name}")
+    if (!namesMap.contains(name)) {
+      val dictionary: Map[String, Int] = rdd.distinct()
+        .zipWithIndex
+        .map(kv => (kv._1, kv._2.toInt + offset))
+        .collect().toMap
 
-    val dictionary: Map[String, Int] = rdd.distinct()
-      .zipWithIndex
-      .map(kv => (kv._1, kv._2.toInt + offset))
-      .collect().toMap
-
-    dictionaries.append(dictionary)
-    namesMap.put(name, FeatureAttr(dictionaries.size - 1, offset))
-    updateFeatureNameLookup(dictionary)
+      dictionaries.append(dictionary)
+      namesMap.put(name, FeatureAttr(dictionaries.size - 1, offset))
+      updateFeatureNameLookup(dictionary)
+    }
   }
 
   /**
