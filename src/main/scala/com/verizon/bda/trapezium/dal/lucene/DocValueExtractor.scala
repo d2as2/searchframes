@@ -21,11 +21,15 @@ class DocValueExtractor(leafReaders: Seq[LuceneReader],
     schema.toSeq.map{ field: StructField =>
       val fieldName = field.name
       val fieldType =
-        if (dimensions.contains(fieldName) || storedDimensions.contains(fieldName)) IntegerType
+        if (storedDimensions.contains(fieldName)) IntegerType
         else field.dataType
       val fieldMultiValued = (field.dataType.isInstanceOf[ArrayType])
-      val accessor = DocValueAccessor(leafReaders, fieldName, fieldType, fieldMultiValued, ser)
-      (fieldName -> accessor)
+      if (dimensions.contains(fieldName))
+        (fieldName -> null)
+      else {
+        val accessor = DocValueAccessor(leafReaders, fieldName, fieldType, fieldMultiValued, ser)
+        (fieldName -> accessor)
+      }
     }.toMap
   } else {
     Map.empty[String, DocValueAccessor]

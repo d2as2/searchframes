@@ -40,8 +40,8 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
   }
 
   test("DictionaryEncoding") {
-    val dimensions = Set("zip", "tld")
-    val storedDimensions = Set.empty[String]
+    val dimensions = Set.empty[String]
+    val storedDimensions = Set("zip", "tld")
     val measures = Set("visits")
 
     val dictPath = new Path(outputPath, "hdfs").toString
@@ -66,8 +66,8 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
   }
 
   test("transform test") {
-    val dimensions = Set("zip", "tld", "appname")
-    val storedDimensions = Set.empty[String]
+    val dimensions = Set.empty[String]
+    val storedDimensions = Set("zip", "tld", "appname")
     val measures = Set("visits")
 
     val features = Array("tld", "appname")
@@ -102,8 +102,8 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
   }
 
   test("index test") {
-    val dimensions = Set("zip", "tld")
-    val storedDimensions = Set.empty[String]
+    val dimensions = Set.empty[String]
+    val storedDimensions = Set("zip", "tld")
     val measures = Set("user","visits")
 
     val indexPath = new Path(outputPath, "hdfs").toString
@@ -133,8 +133,8 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
   test("vector test") {
     val indexPath = new Path(outputPath, "vectors").toString
 
-    val dimensions = Set("zip")
-    val storedDimensions = Set.empty[String]
+    val dimensions = Set.empty[String]
+    val storedDimensions = Set("zip")
     val measures = Set("user", "visits")
 
     val sv = Vectors.sparse(2, Array(2, 4), Array(5.0, 8.0))
@@ -155,8 +155,8 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
   }
 
   test("numeric sum test") {
-    val dimensions = Set("zip", "tld")
-    val storedDimensions = Set.empty[String]
+    val dimensions = Set.empty[String]
+    val storedDimensions = Set("zip", "tld")
     val measures = Set("visits")
 
     val indexPath = new Path(outputPath, "numeric").toString
@@ -179,8 +179,8 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
   }
 
   test("cardinality estimator test") {
-    val dimensions = Set("zip", "tld")
-    val storedDimensions = Set.empty[String]
+    val dimensions = Set.empty[String]
+    val storedDimensions = Set("zip", "tld")
     val measures = Set("user","visits")
 
     val indexPath = new Path(outputPath, "cardinality").toString
@@ -233,8 +233,8 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
   */
 
   test("cardinality estimator load test") {
-    val dimensions = Set("zip", "tld")
-    val storedDimensions = Set.empty[String]
+    val dimensions = Set.empty[String]
+    val storedDimensions = Set("zip", "tld")
     val measures = Set("user", "visits")
 
     val indexPath = new Path(outputPath, "cardinality").toString
@@ -254,8 +254,8 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
   }
 
   test("count test") {
-    val dimensions = Set("zip", "tld")
-    val storedDimensions = Set.empty[String]
+    val dimensions = Set.empty[String]
+    val storedDimensions = Set("zip", "tld")
     val measures = Set("user", "visits")
 
     val indexPath = new Path(outputPath, "cardinality").toString
@@ -270,8 +270,8 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
 
   test("multivalue dimension test") {
     val indexPath = new Path(outputPath, "multivalue").toString
-    val dimensions = Set("zip", "tld")
-    val storedDimensions = Set.empty[String]
+    val dimensions = Set.empty[String]
+    val storedDimensions = Set("zip", "tld")
     val measures = Set("visits", "featureVector")
 
     val dao = new LuceneDAO(indexPath, dimensions, storedDimensions, measures)
@@ -292,8 +292,8 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
 
   test("multivalue dimension test with null dimensions") {
     val indexPath = new Path(outputPath, "multivalue").toString
-    val dimensions = Set("zip", "tld")
-    val storedDimensions = Set.empty[String]
+    val dimensions = Set.empty[String]
+    val storedDimensions = Set("zip", "tld")
     val measures = Set("visits", "featureVector")
 
     val dao = new LuceneDAO(indexPath, dimensions, storedDimensions, measures)

@@ -45,7 +45,7 @@ class LuceneDAO(val location: String,
 
   def encodeDictionary(df: DataFrame): DictionaryManager = {
     if (dictionary == null) dictionary = new DictionaryManager
-    (searchFields++searchAndStoredFields).foreach(f => {
+    (searchAndStoredFields).foreach(f => {
       val selectedDim =
         if (df.schema(f).dataType.isInstanceOf[ArrayType]) {
           df.select(explode(df(f)))
@@ -83,26 +83,26 @@ class LuceneDAO(val location: String,
   def transform(df: DataFrame): DataFrame = {
 
     val featureColumns = dictionary.getNames.toArray
+    if (featureColumns == null || featureColumns.isEmpty) {
+      return df
+    }
 
     val inputWithFeatures = df.withColumn("arrFeatures",
       array(featureColumns.map(df(_)): _*))
     val inputWithFeatureVector = inputWithFeatures.withColumn("featureVector",
       featureVectorUdf(array(featureColumns.map(lit(_)): _*), inputWithFeatures("arrFeatures")))
-
     val keys = udf {
       (s: Map[String, Double]) => {
-        if (s == null) Seq.empty[String]  // this is a workaround
+        if (s == null) Seq.empty[String] // this is a workaround
         else s.keys.toSeq
       }
     }
-
     var outputDf = inputWithFeatureVector.drop("arrFeatures")
     featureColumns.foreach { c: String =>
       outputDf = outputDf.withColumn(c+"tmp", keys(inputWithFeatureVector(c)))
         .drop(c)
         .withColumnRenamed(c+"tmp", c)
     }
-
     outputDf
   }
 

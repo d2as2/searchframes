@@ -37,17 +37,18 @@ class OLAPConverter(val dimensions: Set[String],
     if (value != null) {
       if (dimensions.contains(fieldName) || storedDimensions.contains(fieldName)) {
         // create indexed field
-        if (dimensions.contains(fieldName))
+        if (dimensions.contains(fieldName)) {
           doc.add(toIndexedField(fieldName, dataType, value, Field.Store.NO))
-        else
-          doc.add(toIndexedField(fieldName, dataType, value, Field.Store.YES))
-        //dictionary encoding on dimension doc values
-        val feature = value.asInstanceOf[String]
-        val idx = dict.indexOf(fieldName, feature)
-        if (idx == -1) {
-          logError(s"Doc feature ${fieldName}:${feature} not found in the dictionary")
         } else {
-          doc.add(toDocValueField(fieldName, IntegerType, multiValued, idx))
+          doc.add(toIndexedField(fieldName, dataType, value, Field.Store.YES))
+          //dictionary encoding on dimension doc values
+          val feature = value.asInstanceOf[String]
+          val idx = dict.indexOf(fieldName, feature)
+          if (idx == -1) {
+            logError(s"Doc feature ${fieldName}:${feature} not found in the dictionary")
+          } else {
+            doc.add(toDocValueField(fieldName, IntegerType, multiValued, idx))
+          }
         }
       } else if (measures.contains(fieldName)) {
         logInfo(s"${fieldName} is not in dimensions")
