@@ -3,8 +3,10 @@ package com.verizon.bda.trapezium.dal.lucene
 import org.apache.log4j.Logger
 import org.apache.lucene.document.{Field, Document}
 import org.apache.spark.SparkConf
+import org.apache.spark.mllib.linalg.VectorUDT
 import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.sql.Row
+import org.apache.spark.sql.catalyst.expressions.{UnsafeProjection, UnsafeRow}
 import org.apache.spark.sql.types._
 
 /**
@@ -14,17 +16,21 @@ import org.apache.spark.sql.types._
 
 
 
-//dimensions needs to be indexed, dictionary-mapped and docvalued
-//measures should be docvalued
-//the types on dimension and measures must be SparkSQL compatible
-//dimensions are a subset of types.keySet
+// TODO: Given a dataframe schema create all the Projection
+trait SparkSQLProjections {
+  @transient lazy val VectorProjection = UnsafeProjection.create(VectorType.sqlType)
+  lazy val VectorType = new VectorUDT()
+  lazy val unsafeRow = new UnsafeRow()
+}
+
+// Dimensions needs to be indexed, dictionary-mapped and docvalued
+// measures should be docvalued
+// The types on dimension and measures must be SparkSQL compatible
+// Dimensions are a subset of types.keySet
 class OLAPConverter(val dimensions: Set[String],
                     val storedDimensions: Set[String],
                     val measures: Set[String],
                     val serializer: KryoSerializer) extends SparkLuceneConverter {
-  //TODO: Use SparkSQL Expression encoder in place of Kryo to serialize/deserialize to native UnsafeRow
-  // val encoder: ExpressionEncoder[Row] = RowEncoder(dfSchema)
-
   @transient lazy val ser = serializer.newInstance()
 
   def addField(doc: Document,
@@ -34,27 +40,27 @@ class OLAPConverter(val dimensions: Set[String],
                multiValued: Boolean): Unit = {
     // dimensions will be indexed and docvalued based on dictionary encoding
     // measures will be docvalued
-    if (value != null) {
-      if (dimensions.contains(fieldName) || storedDimensions.contains(fieldName)) {
-        // create indexed field
-        if (dimensions.contains(fieldName)) {
-          doc.add(toIndexedField(fieldName, dataType, value, Field.Store.NO))
+    if (value == null) return
+
+    if (dimensions.contains(fieldName) || storedDimensions.contains(fieldName)) {
+      // create indexed field
+      if (dimensions.contains(fieldName)) {
+        doc.add(toIndexedField(fieldName, dataType, value, Field.Store.NO))
+      } else {
+        doc.add(toIndexedField(fieldName, dataType, value, Field.Store.YES))
+        //dictionary encoding on dimension doc values
+        val feature = value.asInstanceOf[String]
+        val idx = dict.indexOf(fieldName, feature)
+        if (idx == -1) {
+          logError(s"Doc feature ${fieldName}:${feature} not found in the dictionary")
         } else {
-          doc.add(toIndexedField(fieldName, dataType, value, Field.Store.YES))
-          //dictionary encoding on dimension doc values
-          val feature = value.asInstanceOf[String]
-          val idx = dict.indexOf(fieldName, feature)
-          if (idx == -1) {
-            logError(s"Doc feature ${fieldName}:${feature} not found in the dictionary")
-          } else {
-            doc.add(toDocValueField(fieldName, IntegerType, multiValued, idx))
-          }
+          doc.add(toDocValueField(fieldName, IntegerType, multiValued, idx))
         }
-      } else if (measures.contains(fieldName)) {
-        logInfo(s"${fieldName} is not in dimensions")
-        doc.add(toStoredField(fieldName, dataType, value))
-        doc.add(toDocValueField(fieldName, dataType, multiValued, value))
       }
+    } else if (measures.contains(fieldName)) {
+      logInfo(s"${fieldName} is not in dimensions")
+      doc.add(toStoredField(fieldName, dataType, value))
+      doc.add(toDocValueField(fieldName, dataType, multiValued, value))
     }
   }
 
@@ -74,18 +80,13 @@ class OLAPConverter(val dimensions: Set[String],
     this
   }
 
-  // Validate inputSchema based on the dimensions/types
-  def validate(): Boolean = {
-    ???
-  }
-
   def rowToDoc(row: Row): Document = {
     val doc = new Document()
     inputSchema.fields.foreach(field => {
       val fieldName = field.name
       val fieldIndex = row.fieldIndex(fieldName)
       val fieldValue = if (row.isNullAt(fieldIndex)) None else Some(row.get(fieldIndex))
-      //TODO: How to handle None values
+      // TODO: How to handle None values
       if (fieldValue.isDefined) {
         val value = fieldValue.get
         field.dataType match {

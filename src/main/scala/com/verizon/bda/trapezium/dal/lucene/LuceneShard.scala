@@ -20,8 +20,8 @@ class LuceneShard(reader: IndexReader,
                   converter: OLAPConverter) extends IndexSearcher(reader) with Logging {
   logInfo(s"lucene shard leaf readers ${leafContexts.size}")
 
-  //TODO: LeafReader > 1 are shards created by singlethreaded index writer due to flush limits
-  //TODO: Each flush limit generates a new shard
+  // TODO: LeafReader > 1 are shards created by singlethreaded index writer due to flush limits
+  // TODO: Each flush limit generates a new shard
 
   /* On one specific node
 
@@ -74,14 +74,14 @@ class LuceneShard(reader: IndexReader,
 
   def searchDocs(queryStr: String,
                  sample: Double = 1.0): Array[Int] = {
-    //TODO: Provide sampling tricks that give provable count stats without affecting accuracy
-    //val maxRowsPerPartition = Math.floor(sample * getIndexReader.numDocs()).toInt
+    // TODO: Provide sampling tricks that give provable count stats without affecting accuracy
+    // val maxRowsPerPartition = Math.floor(sample * getIndexReader.numDocs()).toInt
 
     BooleanQuery.setMaxClauseCount(Integer.MAX_VALUE)
     val query = rewrite(qp.parse(queryStr))
     val collectionManager = new OLAPCollectionManager(reader.maxDoc())
-    //TODO: this.executorService to run searches in multiple cores while partitions are done
-    //at executor level
+    // TODO: this.executorService to run searches in multiple cores while partitions are done
+    // at executor level
     search(query, collectionManager)
   }
 
@@ -127,8 +127,8 @@ class LuceneShard(reader: IndexReader,
     }
   }
 
-  //TODO: Multiple measures can be aggregated
-  //TODO: Generalize it to dataframe aggregate
+  // TODO: Multiple measures can be aggregated
+  // TODO: Generalize it to dataframe aggregate
   def aggregate(queryStr: String,
                 measure: String,
                 agg: OLAPAggregator): OLAPAggregator = {
@@ -148,7 +148,7 @@ class LuceneShard(reader: IndexReader,
     agg
   }
 
-  //TODO: Generalize it to dataframe groupBy
+  // TODO: Generalize it to Dataframe groupBy
   def group(queryStr: String,
             dimension: String,
             dimOffset: Int,
@@ -176,14 +176,18 @@ class LuceneShard(reader: IndexReader,
     var i = 0
     while (i < filteredDocs.size) {
       val docID = filteredDocs(i)
+      // TODO: When measure is sparse, then dvExtractor extract with offset should be called
       val docMeasure = dvExtractor.extract(measure, docID, 0)
       val offset = dvExtractor.getOffset(dimension, docID)
       var j = 0
       while (j < offset) {
         val idx = dvExtractor.extract(dimension, docID, j).asInstanceOf[Long].toInt
         val scaledIdx = idx - dimOffset
-        //TODO: If the document does not have value, 0 is returned, for age field with ? 0
-        //TODO: docvalue is being returned, why ? clean the if condition
+        // Either docMeasure will be called measureOffset times
+        // OR docMeasure will be called with scaledIdx offset
+        // We take a sparse flag ? does it generalize ?
+        // TODO: If the document does not have value, 0 is returned, for age field with ? 0
+        // TODO: docvalue is being returned, why ? clean the if condition
         if (scaledIdx >= 0) agg.update(scaledIdx, docMeasure)
         j += 1
       }

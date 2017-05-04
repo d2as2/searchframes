@@ -35,8 +35,8 @@ class DocValueExtractor(leafReaders: Seq[LuceneReader],
     Map.empty[String, DocValueAccessor]
   }
 
-  //TODO: Measure can be multi-valued as well. for first iteration of time series
-  //TODO: measures are considered to be single-valued
+  // TODO: Measure can be multi-valued as well. for first iteration of time series
+  // TODO: measures are considered to be single-valued
   private def extractMeasure(docID: Int, column: String): Any = {
     assert(measures.contains(column), s"$column is not a measure")
     val offset = dvMap(column).getOffset(docID)

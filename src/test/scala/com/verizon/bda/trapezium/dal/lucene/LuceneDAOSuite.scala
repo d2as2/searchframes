@@ -1,17 +1,18 @@
 package com.verizon.bda.trapezium.dal.lucene
 
 import java.io.File
-
 import com.holdenkarau.spark.testing.SharedSparkContext
 import org.apache.commons.io.FileUtils
 import org.apache.hadoop.fs.Path
 import org.apache.lucene.search.IndexSearcher
 import org.apache.spark.mllib.linalg.{Vectors, SparseVector}
-import org.apache.spark.sql.{DataFrame, SQLContext}
+import org.apache.spark.sql.{DataFrame, Row, SQLContext}
 import org.apache.spark.sql.functions._
 import org.scalatest.{BeforeAndAfterAll, FunSuite}
 import java.sql.Time
 import java.sql.Timestamp
+import com.clearspring.analytics.stream.cardinality.HyperLogLogPlus
+import org.apache.spark.sql.types._
 
 class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfterAll {
   val outputPath = "target/luceneIndexerTest/"
@@ -91,8 +92,6 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
 
     dao.setDictionary(dm)
     val transformed: DataFrame = dao.transform(df)
-
-    transformed.show()
 
     val result1 = transformed.filter("user = '123'").first().getAs[SparseVector]("featureVector").toString
     assert(result1 == "(3,[0,2,3],[4.0,1.0,4.0])")
@@ -178,6 +177,80 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
     assert(result2("94310") == 0)
   }
 
+  test("cardinality estimator with null dimension") {
+    val dimensions = Set.empty[String]
+    val storedDimensions = Set("zip", "tld")
+    val measures = Set("user", "visits")
+
+    val indexPath = new Path(outputPath, "nulldim").toString
+
+    val dao = new LuceneDAO(indexPath, dimensions, storedDimensions, measures)
+
+    val df = sqlContext.createDataFrame(
+      Seq(("123", "94555", Array("verizon.com", "google.com"), 8),
+        ("456", "94310", Array("apple.com", null), 12),
+        ("314", null, Array("google.com", "amazon.com"), 10)))
+      .toDF("user", "zip", "tld", "visits").coalesce(2)
+    dao.index(df, indexTime)
+    dao.load(sc)
+
+    val result = dao.group("tld:google.com", "zip", "user", "count_approx")
+    assert(result.size == 2)
+    val visits = dao.aggregate("tld:google.com", "visits", "sum")
+    assert(visits == 18)
+  }
+
+  test("cardinality estimator test with sketch") {
+    val dimensions = Set.empty[String]
+    val storedDimensions = Set("zip", "tld")
+    val measures = Set("user", "visits")
+
+    val indexPath = new Path(outputPath, "sketch").toString
+
+    /*
+    val types =
+      Map("user" -> LuceneType(false, BinaryType),
+        "zip" -> LuceneType(false, StringType),
+        "tld" -> LuceneType(true, StringType),
+        "visits" -> LuceneType(false, IntegerType))
+     */
+    val dao = new LuceneDAO(indexPath, dimensions, storedDimensions, measures)
+
+    val p = CardinalityEstimator.accuracy(0.05)
+
+    val user1 = new HyperLogLogPlus(p)
+    user1.offer("123")
+    user1.offer("314")
+    val user2 = new HyperLogLogPlus(p)
+    user2.offer("456")
+    user2.offer("512")
+    val user3 = new HyperLogLogPlus(p)
+    user3.offer("314")
+    user3.offer("124")
+
+    val df = sqlContext.createDataFrame(
+      Seq((user1.getBytes, "94555", Array("verizon.com", "google.com"), 8),
+        (user2.getBytes, "94310", Array("apple.com", "google.com"), 12),
+        (user3.getBytes, "94555", Array("google.com", "amazon.com"), 10)))
+      .toDF("user", "zip", "tld", "visits").coalesce(2)
+
+    dao.index(df, indexTime)
+    dao.load(sc)
+
+    val result = dao.group("tld:google.com", "zip", "user", "sketch")
+    assert(result.size == 2)
+
+    assert(result("94555") == 3)
+    assert(result("94310") == 2)
+
+    val result2 = dao.group("tld:amazon.com", "zip", "user", "sketch")
+    assert(result2("94555") == 2)
+    assert(result2("94310") == 0)
+
+    val result3 = dao.group("tld:verizon.com OR tld:amazon.com", "zip", "user", "sketch")
+    assert(result3.size == 2)
+  }
+
   test("cardinality estimator test") {
     val dimensions = Set.empty[String]
     val storedDimensions = Set("zip", "tld")
@@ -197,6 +270,8 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
 
     val result = dao.group("tld:google.com", "zip", "user", "count_approx")
     assert(result.size == 2)
+    assert(result("94555") == 2)
+    assert(result("94310") == 1)
 
     val result2 = dao.group("tld:amazon.com", "zip", "user", "count_approx")
     assert(result2("94555") == 1)
@@ -206,31 +281,43 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
     assert(result3.size == 2)
   }
 
-  /*
-  test("cardinality estimator with null dimension") {
-    val dimensions = Set("zip", "tld")
-    val indexPath = new Path(outputPath, "cardinality").toString
+  test("cardinality estimator with null measure") {
+    val dimensions = Set.empty[String]
+    val storedDimensions = Set("zip", "tld")
+    val measures = Set("user","visits")
+    val indexPath = new Path(outputPath, "nullmeasure").toString
 
-    val types =
-      Map("user" -> LuceneType(false, StringType),
-        "zip" -> LuceneType(false, StringType),
-        "tld" -> LuceneType(true, StringType),
-        "visits" -> LuceneType(false, IntegerType))
+    val dao = new LuceneDAO(indexPath, dimensions, storedDimensions, measures)
 
-    val dao = new LuceneDAO(indexPath, dimensions, types)
+    // TODO: Add dimension, string and byte measure null
+    val data = sc.parallelize(
+      Seq(Row("123", "94555", Array("verizon.com", "google.com"), 8),
+        Row("456", "94310", Array("apple.com", null), 12),
+        Row("314", null, Array("google.com", "amazon.com"), null)))
 
-    val df = sqlContext.createDataFrame(
-      Seq(("123", "94555", Array("verizon.com", "google.com"), 8),
-        ("456", "94310", Array("apple.com", null), 12),
-        ("314", null, Array("google.com", "amazon.com"), 10)))
-      .toDF("user", "zip", "tld", "visits").coalesce(2)
+    val schema = StructType(Seq(StructField("user", StringType, true),
+      StructField("zip", StringType, true),
+      StructField("tld", ArrayType(StringType, true), true),
+      StructField("visits", IntegerType, true)))
+
+    val df = sqlContext.createDataFrame(data, schema)
+
     dao.index(df, indexTime)
     dao.load(sc)
 
     val result = dao.group("tld:google.com", "zip", "user", "count_approx")
     assert(result.size == 2)
+
+    /* TODO: null single valued dimension encoded as 0 due to NumericDocValues
+    assert(result("94555") == 1)
+    assert(result("94310") == 1)
+    */
+
+    val visits = dao.aggregate("tld:google.com", "visits", "sum")
+    // TODO : For numeric measures doc values pads 0 as MISSING
+    // For other data types further analysis is needed
+    assert(visits == 8)
   }
-  */
 
   test("cardinality estimator load test") {
     val dimensions = Set.empty[String]
@@ -403,5 +490,4 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
 
 
   //TODO: Add a local test where multiple-leaf readers are generated by modifying IndexWriterConfig
-
 }
