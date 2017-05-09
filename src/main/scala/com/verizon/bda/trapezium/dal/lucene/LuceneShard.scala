@@ -3,10 +3,12 @@ package com.verizon.bda.trapezium.dal.lucene
 import org.apache.lucene.analysis.core.KeywordAnalyzer
 import org.apache.lucene.index._
 import org.apache.lucene.queryparser.classic.QueryParser
-import org.apache.lucene.search.{BooleanQuery, IndexSearcher, ScoreDoc}
+import org.apache.lucene.search.{BooleanQuery, IndexSearcher, Query, ScoreDoc}
 import org.apache.spark.Logging
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types.TimestampType
+import java.util.BitSet
+import scala.collection.mutable.ArrayBuffer
 
 /**
  * @author debasish83 on 12/15/16.
@@ -73,10 +75,9 @@ class LuceneShard(reader: IndexReader,
     else None
 
   def searchDocs(queryStr: String,
-                 sample: Double = 1.0): Array[Int] = {
+                 sample: Double = 1.0): BitSet = {
     // TODO: Provide sampling tricks that give provable count stats without affecting accuracy
     // val maxRowsPerPartition = Math.floor(sample * getIndexReader.numDocs()).toInt
-
     BooleanQuery.setMaxClauseCount(Integer.MAX_VALUE)
     val query = rewrite(qp.parse(queryStr))
     val collectionManager = new OLAPCollectionManager(reader.maxDoc())
@@ -86,45 +87,55 @@ class LuceneShard(reader: IndexReader,
   }
 
   def searchDocsWithRelevance(queryStr: String, sample: Double = 1.0): Array[ScoreDoc] = {
-    BooleanQuery.setMaxClauseCount(Integer.MAX_VALUE)
     val maxRowsPerPartition = Math.floor(sample * getIndexReader.numDocs()).toInt
     val topDocs = search(qp.parse(queryStr), maxRowsPerPartition)
     log.info("Hits within partition: " + topDocs.totalHits)
     topDocs.scoreDocs
   }
 
+  /* TODO: Generate a document iterator over BitSet
+    var i = docs.nextSetBit(0)
+    while (i >= 0) {
+      val d = docs.nextSetBit(i)
+      Transform(d)
+      i = docs.nextSetBit(i + 1)
+    }
+  */
   def search(queryStr: String, columns: Seq[String], sample: Double = 1.0): Iterator[Row] = {
     val docs = searchDocs(queryStr, sample)
     // TODO: Scoring of docs is not required for queries that are not extracting relevance
-    val rows = docs.iterator.map { d =>
+    val rowBuilder = new ArrayBuffer[Row](docs.cardinality())
+
+    var i = docs.nextSetBit(0)
+    while (i >= 0) {
+      val d = docs.nextSetBit(i)
       // Extract stored fields
       val stored = converter.docToRow(doc(d))
       reader.document(d)
       val docValued = dvExtractor.extract(columns, d)
-      Row.merge(stored, docValued)
+      rowBuilder += Row.merge(stored, docValued)
+      i = docs.nextSetBit(i + 1)
     }
-    rows
+    rowBuilder.result().iterator
   }
 
   // If timestamp < minTime skip, timestamp >= maxTime skip
   // TODO: For numeric fields, they can be passed through such filters as well, look into
   // integrating time filter as dataframe filter
-  def filterTime(docs: Array[Int],
-                 minTime: Long,
-                 maxTime: Long): Array[Int] = {
-    docs.filter { case (docID) =>
-      val offset = dvExtractor.getOffset(timeColumn.get, docID)
-      var filter = true
-      var i = 0
-      while (i < offset) {
-        val timestamp =
-          dvExtractor.extract(timeColumn.get, docID, i).asInstanceOf[Long]
-        if (timestamp < minTime) filter = false
-        if (timestamp >= maxTime) filter = false
-        i += 1
-      }
-      filter
+  def filter(docs: BitSet,
+             column: String,
+             min: Long,
+             max: Long): BitSet = {
+    var i = docs.nextSetBit(0)
+    while (i >= 0) {
+      val docID = docs.nextSetBit(i)
+      // TODO: time column can be multi-value
+      val timestamp = dvExtractor.extract(column, docID, 0).asInstanceOf[Long]
+      if (timestamp < min) docs.flip(docID)
+      if (timestamp >= max) docs.flip(docID)
+      i = docs.nextSetBit(i + 1)
     }
+    docs
   }
 
   // TODO: Multiple measures can be aggregated
@@ -137,13 +148,14 @@ class LuceneShard(reader: IndexReader,
     log.info(f"document scoring time: ${(System.nanoTime() - scoreStart) * 1e-9}%6.3f sec")
 
     val aggStart = System.nanoTime()
-    var i = 0
-    while (i < docs.size) {
-      val docID = docs(i)
+    var i = docs.nextSetBit(0)
+    while (i >= 0) {
+      val docID = docs.nextSetBit(i)
       val docMeasure = dvExtractor.extract(measure, docID, 0)
       agg.update(0, docMeasure)
-      i += 1
+      i = docs.nextSetBit(i + 1)
     }
+
     log.info(f"document aggregation time :${(System.nanoTime() - aggStart) * 1e-9}%6.3f sec")
     agg
   }
@@ -166,16 +178,17 @@ class LuceneShard(reader: IndexReader,
       log.warn(s"no timestamp in dataset for time [$minTime, $maxTime] filter")
       docs
     } else {
-      filterTime(docs, minTime, maxTime)
+      filter(docs, timeColumn.get, minTime, maxTime)
     }
+
     log.info(f"document filtering time :${(System.nanoTime() - filterStart) * 1e-9}%6.3f sec")
 
-    log.info(s"scored docs ${docs.length} filtered docs ${filteredDocs.length}")
+    log.info(s"scored docs ${docs.length} filtered docs ${filteredDocs.size}")
 
     val aggStart = System.nanoTime()
-    var i = 0
-    while (i < filteredDocs.size) {
-      val docID = filteredDocs(i)
+    var i = docs.nextSetBit(0)
+    while (i >= 0) {
+      val docID = docs.nextSetBit(i)
       // TODO: When measure is sparse, then dvExtractor extract with offset should be called
       val docMeasure = dvExtractor.extract(measure, docID, 0)
       val offset = dvExtractor.getOffset(dimension, docID)
@@ -191,8 +204,9 @@ class LuceneShard(reader: IndexReader,
         if (scaledIdx >= 0) agg.update(scaledIdx, docMeasure)
         j += 1
       }
-      i += 1
+      i = docs.nextSetBit(i + 1)
     }
+
     log.info(f"document aggregation time :${(System.nanoTime() - aggStart) * 1e-9}%6.3f sec")
     agg
   }
@@ -212,15 +226,15 @@ class LuceneShard(reader: IndexReader,
     log.info(f"document scoring time: ${(System.nanoTime() - scoreStart) * 1e-9}%6.3f sec")
 
     val filterStart = System.nanoTime()
-    val filteredDocs = filterTime(docs, minTime, maxTime)
+    val filteredDocs = filter(docs, timeColumn.get, minTime, maxTime)
     log.info(f"document filtering time :${(System.nanoTime() - filterStart) * 1e-9}%6.3f sec")
 
-    log.info(s"scored docs ${docs.length} filtered docs ${filteredDocs.length}")
+    log.info(s"scored docs ${docs.length} filtered docs ${filteredDocs.size}")
 
     val aggStart = System.nanoTime()
-    var i = 0
-    while (i < filteredDocs.size) {
-      val docID = filteredDocs(i)
+    var i = docs.nextSetBit(0)
+    while (i >= 0) {
+      val docID = docs.nextSetBit(i)
       val docMeasure = dvExtractor.extract(measure, docID, 0)
       val offset = dvExtractor.getOffset(timeColumn.get, docID)
       var j = 0
@@ -230,7 +244,7 @@ class LuceneShard(reader: IndexReader,
         agg.update(idx.toInt, docMeasure)
         j += 1
       }
-      i += 1
+      i = docs.nextSetBit(i + 1)
     }
     log.info(f"document aggregation time :${(System.nanoTime() - aggStart) * 1e-9}%6.3f sec")
     agg

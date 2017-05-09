@@ -1,12 +1,15 @@
 package com.verizon.bda.trapezium.dal.lucene
 
 import java.nio.ByteBuffer
+
 import com.verizon.bda.trapezium.dal.exceptions.LuceneDAOException
 import org.apache.lucene.index.{DocValues, LeafReader}
-import org.apache.spark.mllib.linalg.{Vector, VectorUDT}
+import org.apache.spark.mllib.linalg.VectorUDT
 import org.apache.spark.serializer.SerializerInstance
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.types._
+import org.apache.spark.unsafe.types.UTF8String
+
 import scala.reflect.ClassTag
 
 /**
@@ -42,7 +45,6 @@ abstract class DocValueAccessor(luceneReaders: Seq[LuceneReader],
                                 fieldName: String)
   extends DocValueLocator {
   val leafBoundaries: Seq[FeatureAttr] = luceneReaders.map(_.range)
-
   val leafReaders: Seq[LeafReader] = luceneReaders.map(_.leafReader)
 
   def extract(docID: Int, offset: Int): Any
@@ -81,8 +83,7 @@ class StringAccessor(luceneReaders: Seq[LuceneReader],
     assert(offset == 0, s"string docvalue accessor non-zero offset $offset")
     val shardIndex = locate(docID)
     val bytes = docValueReaders(shardIndex).get(docID - lower(shardIndex)).bytes
-    val str = new String(bytes, "UTF-8")
-    str
+    new String(bytes, "UTF-8")
   }
 }
 

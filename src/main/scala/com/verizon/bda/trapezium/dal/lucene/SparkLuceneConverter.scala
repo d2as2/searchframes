@@ -5,8 +5,6 @@ package com.verizon.bda.trapezium.dal.lucene
  *         15 Dec 2016 debasish83 Converter for OLAP queries supporting indexed, DocValues and stored fields
  */
 
-import java.nio.ByteBuffer
-
 import com.verizon.bda.trapezium.dal.exceptions.LuceneDAOException
 import org.apache.lucene.util.BytesRef
 import org.apache.spark.Logging

@@ -14,11 +14,10 @@ import org.apache.spark.sql.types._
  *         Converters for dataframe to OLAP compatible column stores
  */
 
-
-
 // TODO: Given a dataframe schema create all the Projection
 trait SparkSQLProjections {
   @transient lazy val VectorProjection = UnsafeProjection.create(VectorType.sqlType)
+
   lazy val VectorType = new VectorUDT()
   lazy val unsafeRow = new UnsafeRow()
 }
