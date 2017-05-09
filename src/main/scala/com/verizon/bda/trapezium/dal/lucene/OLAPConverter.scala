@@ -13,12 +13,12 @@ import org.apache.spark.sql.types._
  * @author debasish83 on 12/22/16.
  *         Converters for dataframe to OLAP compatible column stores
  */
-
 case class LuceneType(multiValued: Boolean, dataType: DataType)
 
 // TODO: Given a dataframe schema create all the Projection
 trait SparkSQLProjections {
   @transient lazy val VectorProjection = UnsafeProjection.create(VectorType.sqlType)
+
   lazy val VectorType = new VectorUDT()
   lazy val unsafeRow = new UnsafeRow()
 }

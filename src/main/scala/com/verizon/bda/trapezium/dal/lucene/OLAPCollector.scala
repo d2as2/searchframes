@@ -2,19 +2,14 @@ package com.verizon.bda.trapezium.dal.lucene
 
 import org.apache.lucene.index.LeafReaderContext
 import org.apache.lucene.search.{Collector, LeafCollector, Scorer}
-
-import scala.collection.mutable.ArrayBuffer
+import java.util.BitSet
 
 /**
   * @author debasish83 document id collector for OLAP aggregations
   *         Currently we are using lucene doc values but parquet values can be
   *         used as long as there is a unique docID consistent with parquet
   */
-class OLAPCollector(maxDocs: Int) extends Collector with LeafCollector {
-  //TODO: Based on performance better to use a pre-allocated array and counter
-  private val docs = new ArrayBuffer[Int]()
-  docs.sizeHint(maxDocs)
-
+class OLAPCollector(docs: BitSet) extends Collector with LeafCollector {
   //TODO: use docBase from OLAPCollector to cleanup DocValueLocator clumsiness
   var docBase: Int = _
 
@@ -27,16 +22,8 @@ class OLAPCollector(maxDocs: Int) extends Collector with LeafCollector {
     // no-op by default
   }
 
-  def getSize(): Int = {
-    docs.size
-  }
-
-  def getDocs(): Array[Int] = {
-    docs.toArray
-  }
-
   override def collect(doc: Int): Unit = {
-    docs += docBase + doc
+    docs.set(docBase + doc)
   }
 
   override def needsScores(): Boolean = {

@@ -18,6 +18,7 @@ import org.apache.spark.storage.StorageLevel
 import java.sql.Time
 import java.io.File
 import org.apache.spark.util.DalUtils
+import scala.util.Random
 
 class LuceneDAO(val location: String,
                 val dimensions: Set[String],
@@ -131,7 +132,7 @@ class LuceneDAO(val location: String,
   }
 
   // TODO: load logic will move to LuceneRDD
-  private var shards : RDD[LuceneShard] = _
+  private var shards: RDD[LuceneShard] = _
 
   def load(sc: SparkContext): Unit = {
     val indexPath = location.stripSuffix("/") + "/" + INDEX_PREFIX
@@ -203,7 +204,7 @@ class LuceneDAO(val location: String,
   }
 
   // search a query and retrieve for all dimensions + measures
-  def search(queryStr: String, sample: Double = 1.0) : RDD[Row] = {
+  def search(queryStr: String, sample: Double = 1.0): RDD[Row] = {
     search(queryStr, types.keys.toSeq, sample)
   }
 
@@ -219,7 +220,7 @@ class LuceneDAO(val location: String,
   // TODO: Aggregator will be instantiated based on the operator and measure
   // Eventually they will extend Expression from Catalyst but run columnar processing
   private def getAggregator(aggFunc: String,
-                    measure: String): OLAPAggregator = {
+                            measure: String): OLAPAggregator = {
     if (aggFunctions.contains(aggFunc)) {
       aggFunc match {
         case "sum" => new Sum
@@ -236,7 +237,7 @@ class LuceneDAO(val location: String,
   // TODO: If combOp is not within function scope, agg broadcast does not happen and NPE is thrown
   // TODO: Look into treeAggregate
   private def combOp = (agg: OLAPAggregator,
-                other: OLAPAggregator) => {
+                        other: OLAPAggregator) => {
     agg.merge(other)
   }
 
@@ -301,7 +302,7 @@ class LuceneDAO(val location: String,
   def group(queryStr: String,
             dimension: String,
             measure: String,
-            aggFunc: String) : Map[String, Any] = {
+            aggFunc: String): Map[String, Any] = {
     if (shards == null) throw new LuceneDAOException(s"group called with null shards")
 
     val dimRange = dictionary.getRange(dimension)
@@ -324,18 +325,15 @@ class LuceneDAO(val location: String,
     // TODO: Aggregator is picked based on the SQL functions sum, countDistinct, count
     val agg = getAggregator(aggFunc, measure)
 
-    // TODO: If aggregator is not initialized from driver and broadcasted, merge fails on NPE
-    // TODO: RDD aggregate needs to be looked into
+    val groupStart = System.nanoTime()
     agg.init(dimSize)
-
     val results = shards.treeAggregate(agg)(seqOp, combOp)
-
     val groups = results.eval().zipWithIndex
+    println(f"OLAP aggragation time ${(System.nanoTime() - groupStart) * 1e-9}%6.3f sec")
 
     val transformed = groups.map { case (value: Any, index: Int) =>
       (dictionary.getFeatureName(dimOffset + index), value)
     }.toMap
-
     transformed
   }
 }
