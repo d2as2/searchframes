@@ -1,6 +1,7 @@
 package com.verizon.bda.trapezium.dal.lucene
 
 import java.io.IOException
+
 import com.verizon.bda.trapezium.dal.exceptions.LuceneDAOException
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileStatus, FileSystem, PathFilter, Path => HadoopPath}
@@ -17,7 +18,7 @@ import org.apache.spark.sql.{DataFrame, Row}
 import org.apache.spark.storage.StorageLevel
 import java.sql.Time
 import java.io.File
-import org.apache.spark.util.DalUtils
+import org.apache.spark.util.{DalUtils, RDDUtils}
 import scala.util.Random
 
 class LuceneDAO(val location: String,
@@ -290,11 +291,8 @@ class LuceneDAO(val location: String,
         measure,
         agg)
     }
-
     val agg = getAggregator(aggFunc, measure)
-
     agg.init(1)
-
     val results = shards.treeAggregate(agg)(seqOp, combOp)
     results.eval()(0)
   }
@@ -312,24 +310,47 @@ class LuceneDAO(val location: String,
     log.info(s"query ${queryStr} dimension ${dimension}, " +
       s"range [${dimRange._1}, ${dimRange._2}] measure ${measure}")
 
-    val seqOp = (agg: OLAPAggregator,
-                 shard: LuceneShard) => {
-      shard.group(
-        queryStr,
-        dimension,
-        dimOffset,
-        measure,
-        agg = agg)
-    }
-
     // TODO: Aggregator is picked based on the SQL functions sum, countDistinct, count
     val agg = getAggregator(aggFunc, measure)
 
-    val groupStart = System.nanoTime()
-    agg.init(dimSize)
-    val results = shards.treeAggregate(agg)(seqOp, combOp)
-    val groups = results.eval().zipWithIndex
-    println(f"OLAP aggragation time ${(System.nanoTime() - groupStart) * 1e-9}%6.3f sec")
+    // TODO: If aggregator is not initialized from driver and broadcasted, merge fails on NPE
+    // TODO: RDD aggregate needs to be looked into
+
+    val conf = shards.sparkContext.getConf
+    val executorAggregate = conf.get("spark.trapezium.executoraggregate").toBoolean
+    println(s"executorAggregate ${executorAggregate}")
+
+    val seqOp = (agg: OLAPAggregator,
+                 shard: LuceneShard) => shard.group(
+      queryStr,
+      dimension,
+      dimOffset,
+      measure,
+      agg = agg)
+
+    val groups = if (executorAggregate) {
+      val groupStart = System.nanoTime()
+      val partitions = shards.sparkContext.defaultParallelism
+      val executorId = Math.floor(Random.nextDouble() * partitions).toInt
+      agg.init(dimSize)
+
+      val results =
+        RDDUtils.treeAggregateExecutor(agg)(
+          shards,
+          seqOp,
+          (agg, other) => agg.merge(other),
+          depth = 2,
+          executorId).map(_.eval().zipWithIndex)
+      results.count()
+      println(f"OLAP aggregation time ${(System.nanoTime() - groupStart) * 1e-9}%6.3f sec")
+      results.collect()(0)
+    } else {
+      val groupStart = System.nanoTime()
+      agg.init(dimSize)
+      val results = shards.treeAggregate(agg)(seqOp, combOp)
+      println(f"OLAP aggragation time ${(System.nanoTime() - groupStart) * 1e-9}%6.3f sec")
+      results.eval().zipWithIndex
+    }
 
     val transformed = groups.map { case (value: Any, index: Int) =>
       (dictionary.getFeatureName(dimOffset + index), value)
