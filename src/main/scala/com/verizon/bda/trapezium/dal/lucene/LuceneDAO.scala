@@ -317,7 +317,7 @@ class LuceneDAO(val location: String,
     // TODO: RDD aggregate needs to be looked into
 
     val conf = shards.sparkContext.getConf
-    val executorAggregate = conf.get("spark.trapezium.executoraggregate").toBoolean
+    val executorAggregate = conf.get("spark.trapezium.executoraggregate", "false").toBoolean
     println(s"executorAggregate ${executorAggregate}")
 
     val seqOp = (agg: OLAPAggregator,
