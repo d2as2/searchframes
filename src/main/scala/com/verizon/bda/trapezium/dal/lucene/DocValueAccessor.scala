@@ -1,15 +1,12 @@
 package com.verizon.bda.trapezium.dal.lucene
 
 import java.nio.ByteBuffer
-
 import com.verizon.bda.trapezium.dal.exceptions.LuceneDAOException
 import org.apache.lucene.index.{DocValues, LeafReader}
 import org.apache.spark.mllib.linalg.VectorUDT
 import org.apache.spark.serializer.SerializerInstance
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.types._
-import org.apache.spark.unsafe.types.UTF8String
-
 import scala.reflect.ClassTag
 
 /**

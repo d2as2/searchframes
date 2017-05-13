@@ -319,6 +319,8 @@ class LuceneDAO(val location: String,
     val conf = shards.sparkContext.getConf
     val executorAggregate = conf.get("spark.trapezium.executoraggregate", "false").toBoolean
     println(s"executorAggregate ${executorAggregate}")
+    val depth = conf.get("spark.trapezium.aggregationdepth", "2").toInt
+    println(s"aggregation depth ${depth}")
 
     val seqOp = (agg: OLAPAggregator,
                  shard: LuceneShard) => shard.group(
@@ -339,7 +341,7 @@ class LuceneDAO(val location: String,
           shards,
           seqOp,
           (agg, other) => agg.merge(other),
-          depth = 2,
+          depth,
           executorId).map(_.eval().zipWithIndex)
       results.count()
       println(f"OLAP aggregation time ${(System.nanoTime() - groupStart) * 1e-9}%6.3f sec")
@@ -347,7 +349,7 @@ class LuceneDAO(val location: String,
     } else {
       val groupStart = System.nanoTime()
       agg.init(dimSize)
-      val results = shards.treeAggregate(agg)(seqOp, combOp)
+      val results = shards.treeAggregate(agg)(seqOp, combOp, depth)
       println(f"OLAP aggragation time ${(System.nanoTime() - groupStart) * 1e-9}%6.3f sec")
       results.eval().zipWithIndex
     }

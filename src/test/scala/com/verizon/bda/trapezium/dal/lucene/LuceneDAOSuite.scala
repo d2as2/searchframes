@@ -225,7 +225,6 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
 
     val result2 = dao.group("tld:amazon.com", "zip", "user", "sketch")
     assert(result2("94555") == 2)
-    assert(result2("94310") == 0)
 
     val result3 = dao.group("tld:verizon.com OR tld:amazon.com", "zip", "user", "sketch")
     assert(result3.size == 2)

@@ -2,12 +2,16 @@ package org.apache.spark.util
 
 import org.apache.spark.{HashPartitioner, Logging}
 import org.apache.spark.rdd.RDD
-
+import org.apache.spark.util.collection.OpenHashMap
 import scala.reflect.ClassTag
+
 /**
   * Created by v606014 on 5/10/17.
   */
+
 object RDDUtils extends Logging {
+  type SparkOpenHashMap[K,V] = OpenHashMap[K,V]
+
   /**
     * Aggregates the elements of this RDD in a multi-level tree pattern and reduces the
     * final results to an executor identified by the executorId
