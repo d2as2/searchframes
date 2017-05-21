@@ -3,7 +3,7 @@ package com.verizon.bda.trapezium.dal.lucene
 import scala.collection.mutable.HashSet
 import com.clearspring.analytics.stream.cardinality.HyperLogLogPlus
 import com.clearspring.analytics.stream.cardinality.HyperLogLogPlus.Builder
-import org.apache.spark.util.RDDUtils.SparkOpenHashMap
+import org.apache.spark.util.SparkOpenHashMap
 
 /**
  * @author debasish83 on 12/24/16.

@@ -2,16 +2,14 @@ package org.apache.spark.util
 
 import org.apache.spark.{HashPartitioner, Logging}
 import org.apache.spark.rdd.RDD
-import org.apache.spark.util.collection.OpenHashMap
 import scala.reflect.ClassTag
 
 /**
-  * Created by v606014 on 5/10/17.
+  * @author debasish83 on 5/10/17.
+  *         RDD Utilities to expose private spark classes
   */
 
 object RDDUtils extends Logging {
-  type SparkOpenHashMap[K,V] = OpenHashMap[K,V]
-
   /**
     * Aggregates the elements of this RDD in a multi-level tree pattern and reduces the
     * final results to an executor identified by the executorId
@@ -27,10 +25,8 @@ object RDDUtils extends Logging {
     executorId: Int): RDD[U] = in.withScope {
     require(depth >= 1, s"Depth must be greater than or equal to 1 but got $depth.")
 
-    val cleanSeqOp = in.context.clean(seqOp)
-    val cleanCombOp = in.context.clean(combOp)
     val aggregatePartition =
-      (it: Iterator[T]) => it.aggregate(zeroValue)(cleanSeqOp, cleanCombOp)
+      (it: Iterator[T]) => it.aggregate(zeroValue)(seqOp, combOp)
     var partiallyAggregated = in.mapPartitions(it => Iterator(aggregatePartition(it)))
     var numPartitions = partiallyAggregated.partitions.length
     val scale = math.max(math.ceil(math.pow(numPartitions, 1.0 / depth)).toInt, 2)
@@ -44,12 +40,28 @@ object RDDUtils extends Logging {
       log.info(s"scaling partitions ${numPartitions}")
       partiallyAggregated = partiallyAggregated.mapPartitionsWithIndex {
         (i, iter) => iter.map((i % curNumPartitions, _))
-      }.reduceByKey(new HashPartitioner(curNumPartitions), cleanCombOp).values
+      }.reduceByKey(new HashPartitioner(curNumPartitions), combOp).values
     }
-    // push the final aggregation results to spark executor
+    // key is within 0 - curNumPartitions
+    // push the final aggregation results to spark executor post map side aggregation
     partiallyAggregated.mapPartitionsWithIndex {
       (i, iter) => iter.map((executorId, _))
-    }.reduceByKey(new HashPartitioner(1), cleanCombOp).values
+    }.aggregateByKey(
+      zeroValue,
+      new HashPartitioner(executorId))(combOp, combOp).values
+  }
+
+  /**
+   * map partitions without cleaning up the closures
+   * @tparam T RDD type
+   * @tparam U map partition type
+   * @param in RDD
+   */
+  def mapPartitionsInternal[T: ClassTag, U: ClassTag](
+    in: RDD[T],
+    f: (Iterator[T]) => Iterator[U],
+    preservesPartitioning: Boolean = false): RDD[U] = {
+    in.mapPartitionsInternal(f, preservesPartitioning)
   }
 }
 
