@@ -6,7 +6,7 @@
 	<parent>
 		<groupId>com.verizon.bda</groupId>
 		<artifactId>trapezium-parent</artifactId>
-		<version>1.0.0-SNAPSHOT</version>
+		<version>1.0.0</version>
 		<relativePath>../pom.xml</relativePath>
 	</parent>
         
