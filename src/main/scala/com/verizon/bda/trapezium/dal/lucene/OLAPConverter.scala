@@ -46,7 +46,7 @@ class OLAPConverter(val dimensions: Set[String],
       if (dimensions.contains(fieldName)) {
         doc.add(toIndexedField(fieldName, dataType, value, Field.Store.NO))
       } else {
-        doc.add(toIndexedField(fieldName, dataType, value, Field.Store.YES))
+        doc.add(toIndexedField(fieldName, dataType, value, Field.Store.NO))
         //dictionary encoding on dimension doc values
         val feature = value.asInstanceOf[String]
         val idx = dict.indexOf(fieldName, feature)
@@ -58,7 +58,8 @@ class OLAPConverter(val dimensions: Set[String],
       }
     } else if (measures.contains(fieldName)) {
       logInfo(s"${fieldName} is not in dimensions")
-      doc.add(toStoredField(fieldName, dataType, value))
+      //TODO: Add a config to choose row based or column based storage
+      //doc.add(toStoredField(fieldName, dataType, value))
       doc.add(toDocValueField(fieldName, dataType, multiValued, value))
     }
   }
