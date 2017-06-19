@@ -52,7 +52,12 @@ trait SparkLuceneConverter extends SparkSQLProjections with Serializable with Lo
                       dataType: DataType,
                       multivalued: Boolean,
                       value: Any): Field = {
-    val field = dataType match {
+    if (multivalued) {
+      assert(dataType == IntegerType, "multi-valued dimensions must be integer")
+      return new SortedNumericDocValuesField(name, value.asInstanceOf[Int])
+    }
+
+    dataType match {
       case IntegerType =>
         new NumericDocValuesField(name, value.asInstanceOf[Int])
       case LongType =>
@@ -79,12 +84,6 @@ trait SparkLuceneConverter extends SparkSQLProjections with Serializable with Lo
         val bytes = ser.serialize(value).array()
         new BinaryDocValuesField(name, new BytesRef(bytes))
     }
-
-    if (multivalued) {
-      assert(dataType == IntegerType, "multi-valued dimensions must be integer")
-      new SortedNumericDocValuesField(name, value.asInstanceOf[Int])
-    }
-    else field
   }
 
   def toStoredField(name: String,

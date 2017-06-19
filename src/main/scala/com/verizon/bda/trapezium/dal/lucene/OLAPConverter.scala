@@ -1,7 +1,9 @@
 package com.verizon.bda.trapezium.dal.lucene
 
+import java.util.UUID
+
 import com.verizon.bda.trapezium.dal.exceptions.LuceneDAOException
-import org.apache.lucene.document.Document
+import org.apache.lucene.document.{Document, Field}
 import org.apache.spark.SparkConf
 import org.apache.spark.mllib.linalg.VectorUDT
 import org.apache.spark.serializer.KryoSerializer
@@ -28,6 +30,7 @@ trait SparkSQLProjections {
 // The types on dimension and measures must be SparkSQL compatible
 // Dimensions are a subset of types.keySet
 class OLAPConverter(val dimensions: Set[String],
+                    val searchDimensions: Set[String],
                     val types: Map[String, LuceneType],
                     val serializer: KryoSerializer) extends SparkLuceneConverter {
   @transient lazy val ser = serializer.newInstance()
@@ -41,18 +44,20 @@ class OLAPConverter(val dimensions: Set[String],
     // measures will be docvalued
     if (value == null) return
 
-    if (dimensions.contains(fieldName)) {
+    if (searchDimensions.contains(fieldName)) {
+      doc.add(toIndexedField(fieldName, dataType, value))
+    } else if (dimensions.contains(fieldName)) {
       doc.add(toIndexedField(fieldName, dataType, value))
       // Dictionary encoding on dimension doc values
       val feature = value.asInstanceOf[String]
       val idx = dict.indexOf(fieldName, feature)
-      doc.add(toDocValueField(fieldName, IntegerType, multiValued, idx))
+      // SingleValue and MultiValue dimension are both stored as NumericSet
+      doc.add(toDocValueField(fieldName, IntegerType, true, idx))
     }
     else if (types.contains(fieldName)) {
       doc.add(toDocValueField(fieldName, dataType, multiValued, value))
     }
     else {
-      logInfo(s"${fieldName} is not in dimensions/measures")
       doc.add(toStoredField(fieldName, dataType, value))
     }
   }
@@ -75,6 +80,8 @@ class OLAPConverter(val dimensions: Set[String],
 
   def rowToDoc(row: Row): Document = {
     val doc = new Document()
+    // Add unique UUID for SolrCloud push
+    doc.add(toIndexedField("uuid", StringType, UUID.randomUUID().toString, Field.Store.YES))
     inputSchema.fields.foreach(field => {
       val fieldName = field.name
       val fieldIndex = row.fieldIndex(fieldName)
@@ -125,8 +132,9 @@ class OLAPConverter(val dimensions: Set[String],
 
 object OLAPConverter {
   def apply(dimensions: Set[String],
+            searchDimensions: Set[String],
             types: Map[String, LuceneType]): OLAPConverter = {
     val ser = new KryoSerializer(new SparkConf())
-    new OLAPConverter(dimensions, types, ser)
+    new OLAPConverter(dimensions, searchDimensions, types, ser)
   }
 }

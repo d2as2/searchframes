@@ -90,7 +90,7 @@ class CardinalityEstimator(rsd : Double = 0.05) extends OLAPAggregator {
 
   val p = CardinalityEstimator.accuracy(rsd)
 
-  // TODO: Replace OpenHashMap with unsafe Map
+  // TODO: Replace OpenHashMap with UnsafeMap
   var buffer: SparkOpenHashMap[Int, HyperLogLogPlus] = _
   var size: Int = _
 

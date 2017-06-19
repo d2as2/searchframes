@@ -13,21 +13,25 @@ class DocValueExtractor(leafReaders: Seq[LuceneReader],
                         converter: OLAPConverter) extends Serializable with Logging {
   val types = converter.types
   val dimensions = converter.dimensions
+  val searchDimensions = converter.searchDimensions
   val ser = converter.ser
 
   private val dvMap: Map[String, DocValueAccessor] = if (leafReaders.length > 0) {
-    types.map { case (k, v) =>
-      // Dimensions have gone through DictionaryEncoding
-      val dataType =
-        if (dimensions.contains(k)) IntegerType
-        else v.dataType
-      val accessor = DocValueAccessor(leafReaders, k, dataType, v.multiValued, ser)
+    types.filterNot {
+      case (k, _) => searchDimensions.contains(k)
+    }.map { case (k, v) =>
+      // Dimensions have gone through DictionaryEncoding and uses sortedsetnumeric storage
+      val accessor = if (dimensions.contains(k)) {
+        DocValueAccessor(leafReaders, k, IntegerType, true, ser)
+      } else {
+        DocValueAccessor(leafReaders, k, v.dataType, v.multiValued, ser)
+      }
       (k, accessor)
     }
   } else {
     Map.empty[String, DocValueAccessor]
   }
-
+  
   // TODO: Measure can be multi-valued as well. for first iteration of time series
   // TODO: measures are considered to be single-valued
   private def extractMeasure(docID: Int, column: String): Any = {

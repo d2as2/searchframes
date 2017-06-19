@@ -22,6 +22,7 @@ import scala.util.Random
 class LuceneDAO(val location: String,
                 val dimensions: Set[String],
                 val types: Map[String, LuceneType],
+                val searchDimensions: Set[String] = Set.empty,
                 storageLevel: StorageLevel = StorageLevel.DISK_ONLY) extends Serializable {
   @transient lazy val log = Logger.getLogger(classOf[LuceneDAO])
   @transient private lazy val analyzer = new KeywordAnalyzer
@@ -32,7 +33,7 @@ class LuceneDAO(val location: String,
   val INDEX_PREFIX = "index"
   val DICTIONARY_PREFIX = "dictionary"
 
-  @transient lazy val converter = OLAPConverter(dimensions, types)
+  @transient lazy val converter = OLAPConverter(dimensions, searchDimensions, types)
   @transient private var _dictionary: DictionaryManager = _
 
   def encodeDictionary(df: DataFrame): DictionaryManager = {
@@ -41,6 +42,7 @@ class LuceneDAO(val location: String,
       val selectedDim =
         if (types(f).multiValued) df.select(explode(df(f)))
         else df.select(df(f))
+      // dimension that are null will be filtered out
       val filteredDim = selectedDim.rdd.map(_.getAs[String](0)).filter(_ != null)
       dm.addToDictionary(f, filteredDim)
     })
@@ -219,8 +221,7 @@ class LuceneDAO(val location: String,
 
   // TODO: Aggregator will be instantiated based on the operator and measure
   // Eventually they will extend Expression from Catalyst but run columnar processing
-  private def getAggregator(aggFunc: String,
-                            measure: String): OLAPAggregator = {
+  private def getAggregator(aggFunc: String): OLAPAggregator = {
     if (aggFunctions.contains(aggFunc)) {
       aggFunc match {
         case "sum" => new Sum
@@ -239,7 +240,7 @@ class LuceneDAO(val location: String,
                         other: OLAPAggregator) => {
     agg.merge(other)
   }
-
+  
   // TODO: Multiple  measures can be aggregated at same time
   def aggregate(queryStr: String,
                 measure: String,
@@ -255,7 +256,7 @@ class LuceneDAO(val location: String,
         measure,
         agg)
     }
-    val agg = getAggregator(aggFunc, measure)
+    val agg = getAggregator(aggFunc)
     val aggStart = System.nanoTime()
     agg.init(1)
     val results = shards.treeAggregate(agg)(seqOp, combOp)
@@ -263,6 +264,8 @@ class LuceneDAO(val location: String,
     results.eval()(0)
   }
 
+  // TODO: time-series and group should be combined in group, bucket boundaries on any measure
+  // is feasible to generate like time-series
   def group(queryStr: String,
             dimension: String,
             measure: String,
@@ -277,7 +280,7 @@ class LuceneDAO(val location: String,
       s"range [${dimRange._1}, ${dimRange._2}] measure ${measure}")
 
     // TODO: Aggregator is picked based on the SQL functions sum, countDistinct, count
-    val agg = getAggregator(aggFunc, measure)
+    val agg = getAggregator(aggFunc)
 
     // TODO: If aggregator is not initialized from driver and broadcasted, merge fails on NPE
     // TODO: RDD aggregate needs to be looked into
@@ -353,12 +356,45 @@ class LuceneDAO(val location: String,
         agg)
     }
 
-    val agg = getAggregator(aggFunc, measure)
+    val agg = getAggregator(aggFunc)
 
     val tsStart = System.nanoTime()
     agg.init(dimSize)
     val results = shards.treeAggregate(agg)(seqOp, combOp)
     println(f"OLAP timeseries time ${(System.nanoTime() - tsStart) * 1e-9}%6.3f sec")
     results.eval
+  }
+
+  def facet(queryStr: String,
+            dimension: String): Map[String, Any] = {
+    if (shards == null) throw new LuceneDAOException(s"timeseries called with null shards")
+
+    log.info(s"query ${queryStr} dimension ${dimension}")
+    val agg = getAggregator("sum")
+
+    val dimRange = dictionary.getRange(dimension)
+    val dimSize = dimRange._2 - dimRange._1 + 1
+    val dimOffset = dimRange._1
+
+    val seqOp = (agg: OLAPAggregator,
+                 shard: LuceneShard) => {
+      shard.facet(
+        queryStr,
+        dimension,
+        dimOffset,
+        agg)
+    }
+
+    val facetStart = System.nanoTime()
+    agg.init(dimSize)
+    val results = shards.treeAggregate(agg)(seqOp, combOp)
+    println(f"OLAP facet time ${(System.nanoTime() - facetStart) * 1e-9}%6.3f sec")
+    val facets = results.eval().zipWithIndex
+
+    val transformed = facets.map { case (value: Any, index: Int) =>
+      (dictionary.getFeatureName(dimOffset + index), value)
+    }.toMap
+
+    transformed
   }
 }

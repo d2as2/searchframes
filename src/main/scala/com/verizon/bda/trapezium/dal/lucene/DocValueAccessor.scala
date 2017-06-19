@@ -46,7 +46,7 @@ abstract class DocValueAccessor(luceneReaders: Seq[LuceneReader],
 
   def extract(docID: Int, offset: Int): Any
 
-  // Doc value offset for a given accessor, default offset is 1
+  // Doc value offset for a given accessor, default offset is 1 per bytes
   def getOffset(docID: Int): Int = 1
 
   // Local per partition encoding
@@ -56,7 +56,7 @@ abstract class DocValueAccessor(luceneReaders: Seq[LuceneReader],
 }
 
 // NumericAccessor work on Long even if incoming types are Int, Float, Long, Double
-// Null numeric values are packed as 0
+// Null numeric values are packed as 0, No impact on numeric aggregations
 class NumericAccessor(luceneReaders: Seq[LuceneReader],
                       fieldName: String)
   extends DocValueAccessor(luceneReaders, fieldName) {
@@ -70,11 +70,16 @@ class NumericAccessor(luceneReaders: Seq[LuceneReader],
   }
 }
 
-// TODO: Null string in SortedDocValues is packed as -1
 class StringAccessor(luceneReaders: Seq[LuceneReader],
                      fieldName: String)
   extends DocValueAccessor(luceneReaders, fieldName) {
   val docValueReaders = leafReaders.map(DocValues.getSorted(_, fieldName))
+
+  override def getOffset(docID: Int): Int = {
+    val shardIndex = locate(docID)
+    if (docValueReaders(shardIndex).getOrd(docID - lower(shardIndex)) == -1) 0
+    else 1
+  }
 
   def extract(docID: Int, offset: Int): Any = {
     assert(offset == 0, s"string docvalue accessor non-zero offset $offset")
@@ -103,7 +108,7 @@ class BinaryAccessor(luceneReaders: Seq[LuceneReader],
 }
 
 // TODO: single/multi-value dimensions should be packed as SortedNumericDocValues
-// single dimension as numeric results in 0 for null which collapses with dimension index
+// single dimension as numeric results in 0 for null which clashes with dimension index
 class ArrayNumericAccessor(luceneReaders: Seq[LuceneReader],
                            fieldName: String)
   extends DocValueAccessor(luceneReaders, fieldName) {
