@@ -12,9 +12,6 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 */
-/**
- * Copyright (C) Verizon Corp.
- */
 package com.verizon.bda.trapezium.dal.data
 
 import org.apache.log4j.Logger
@@ -52,49 +49,3 @@ trait Data[T] {
 
 }
 
-/**
- * Trait for key-value data store. This trait defines additional functions
- * to read/write partial table/collection based on the key.
- *
- * @tparam K key type.
- * @tparam V value type returned during point look-ups.
- * @tparam T distributed collection of data returned during batch reads.
- */
-trait KVData[K, V, T] extends Data[T] {
-
-  /**
-   * Fetch the value for the given key and return it.
-   *
-   * @param key
-   * @return V
-   */
-  protected def getValue(key: K): V
-
-  /**
-   * Fetch a range of key-value pairs and return it as a distributed collection of data.
-   *
-   * @param startRow
-   * @param endRow
-   * @return T
-   */
-  protected def getRange(startRow: K, endRow: K): T
-
-  /**
-   * Fetch n values from the data store starting with startRow and return the distributed
-   * collection of data.
-   *
-   * @param startRow
-   * @param n number of records to be fetched
-   * @return T
-   */
-  protected def multiGet(startRow: K, n: Int): T
-
-  /**
-   * Insert a row containing key and value pair into the data store.
-   *
-   * @param key
-   * @param value
-   */
-  protected def insert(key: K, value: V): Unit
-
-}

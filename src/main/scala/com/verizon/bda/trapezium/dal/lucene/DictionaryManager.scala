@@ -14,7 +14,7 @@ import scala.collection.mutable.{ArrayBuffer => MArray, Map => MMap}
 
 // TODO: Use prefix tree (trie) to decrease the dictionary size
 
-case class FeatureAttr(dictionaryPos: Int, featureOffset: Int) extends Serializable {
+case class FeatureAttr(dictionaryPos: Int, featureOffset: Int) {
   val max = dictionaryPos + featureOffset
 
   def contains(id: Int): Boolean = {
@@ -117,6 +117,21 @@ class DictionaryManager extends Serializable {
     dictionaries(namesMap.get(name).get.dictionaryPos).getOrElse(feature, -1)
   }
 
+  /**
+    * Given the dimension find the field and calculate the index of the dimension.
+    *
+    * @param feature Feature name for which the index is fetched.
+    * @return Int index of the feature name in the dictionary.
+    */
+  def indexOf(feature: String): Int = {
+    var index = -1
+    getNames().foreach(fieldName => {
+      index = indexOf(fieldName, feature)
+      if (index > 0) return index
+    })
+    index
+  }
+  
   /**
     * Given the dimension, return the start and end positions of the indices.
     *

@@ -3,6 +3,7 @@ package com.verizon.bda.trapezium.dal.lucene
 import scala.collection.mutable.HashSet
 import com.clearspring.analytics.stream.cardinality.HyperLogLogPlus
 import com.clearspring.analytics.stream.cardinality.HyperLogLogPlus.Builder
+import org.apache.spark.util.SparkOpenHashMap
 
 /**
  * @author debasish83 on 12/24/16.
@@ -89,28 +90,44 @@ class CardinalityEstimator(rsd : Double = 0.05) extends OLAPAggregator {
 
   val p = CardinalityEstimator.accuracy(rsd)
 
-  var buffer: Array[HyperLogLogPlus] = _
+  // TODO: Replace OpenHashMap with UnsafeMap
+  var buffer: SparkOpenHashMap[Int, HyperLogLogPlus] = _
+  var size: Int = _
 
   def init(size: Int): Unit = {
-    buffer = Array.fill[HyperLogLogPlus](size)(new HyperLogLogPlus(p))
+    buffer = new SparkOpenHashMap[Int, HyperLogLogPlus](size)
+    this.size = size
   }
 
   def update(idx: Int, input: Any): Unit = {
+    if (buffer(idx) == null) buffer(idx) = new HyperLogLogPlus(p)
     buffer(idx).offer(input)
   }
 
   def get(idx: Int): Any = buffer(idx)
 
   def merge(other: OLAPAggregator): OLAPAggregator = {
-    var idx = 0
-    while (idx < buffer.length) {
-      buffer(idx).addAll(other.get(idx).asInstanceOf[HyperLogLogPlus])
-      idx += 1
+    val otherBuf = other.asInstanceOf[CardinalityEstimator].buffer
+    val iter = otherBuf.iterator
+    while (iter.hasNext) {
+      val entry = iter.next()
+      if (buffer(entry._1) != null)
+        buffer(entry._1).addAll(entry._2)
+      else
+        buffer(entry._1) = entry._2
     }
     this
   }
 
-  def eval(): Array[Any] = buffer.map(_.cardinality())
+  def eval(): Array[Any] = {
+    val result = Array.fill[Any](size)(0L)
+    val iter = buffer.iterator
+    while (iter.hasNext) {
+      val entry = iter.next()
+      result(entry._1) = entry._2.cardinality()
+    }
+    result
+  }
 }
 
 // TODO: Add BitMap and MinHash sketches
@@ -120,7 +137,8 @@ class SketchAggregator(rsd: Double = 0.05) extends CardinalityEstimator(rsd) {
 
   override def update(idx: Int, input: Any): Unit = {
     val hll = Builder.build(input.asInstanceOf[Array[Byte]])
-    buffer(idx).addAll(hll)
+    if (buffer(idx) != null) buffer(idx).addAll(hll)
+    else buffer(idx) = hll
   }
 }
 

@@ -1,7 +1,7 @@
 package com.verizon.bda.trapezium.dal.lucene
 
-import org.apache.log4j.Logger
 import org.apache.lucene.document.{Field, Document}
+import java.util.UUID
 import org.apache.spark.SparkConf
 import org.apache.spark.mllib.linalg.VectorUDT
 import org.apache.spark.serializer.KryoSerializer
@@ -41,25 +41,17 @@ class OLAPConverter(val dimensions: Set[String],
     // measures will be docvalued
     if (value == null) return
 
-    if (dimensions.contains(fieldName) || storedDimensions.contains(fieldName)) {
-      // create indexed field
-      if (dimensions.contains(fieldName)) {
-        doc.add(toIndexedField(fieldName, dataType, value, Field.Store.NO))
-      } else {
-        doc.add(toIndexedField(fieldName, dataType, value, Field.Store.NO))
-        //dictionary encoding on dimension doc values
-        val feature = value.asInstanceOf[String]
-        val idx = dict.indexOf(fieldName, feature)
-        if (idx == -1) {
-          logError(s"Doc feature ${fieldName}:${feature} not found in the dictionary")
-        } else {
-          doc.add(toDocValueField(fieldName, IntegerType, multiValued, idx))
-        }
-      }
-    } else if (measures.contains(fieldName)) {
-      logInfo(s"${fieldName} is not in dimensions")
-      //TODO: Add a config to choose row based or column based storage
-      //doc.add(toStoredField(fieldName, dataType, value))
+    if (dimensions.contains(fieldName)) {
+      doc.add(toIndexedField(fieldName, dataType, value, Field.Store.NO))
+    } else if (storedDimensions.contains(fieldName)) {
+      doc.add(toIndexedField(fieldName, dataType, value, Field.Store.NO))
+      // Dictionary encoding on dimension doc values
+      val feature = value.asInstanceOf[String]
+      val idx = dict.indexOf(fieldName, feature)
+      // SingleValue and MultiValue dimension are both stored as NumericSet
+      doc.add(toDocValueField(fieldName, IntegerType, true, idx))
+    }
+    else if (measures.contains(fieldName)) {
       doc.add(toDocValueField(fieldName, dataType, multiValued, value))
     }
   }
@@ -82,6 +74,8 @@ class OLAPConverter(val dimensions: Set[String],
 
   def rowToDoc(row: Row): Document = {
     val doc = new Document()
+    // Add unique UUID for SolrCloud push
+    doc.add(toIndexedField("uuid", StringType, UUID.randomUUID().toString, Field.Store.YES))
     inputSchema.fields.foreach(field => {
       val fieldName = field.name
       val fieldIndex = row.fieldIndex(fieldName)

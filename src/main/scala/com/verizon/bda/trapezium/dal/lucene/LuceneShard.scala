@@ -151,11 +151,40 @@ class LuceneShard(reader: IndexReader,
     var i = docs.nextSetBit(0)
     while (i >= 0) {
       val docID = docs.nextSetBit(i)
-      val docMeasure = dvExtractor.extract(measure, docID, 0)
-      agg.update(0, docMeasure)
+      val measureOffset = dvExtractor.getOffset(measure, docID)
+      if (measureOffset > 0) {
+        val docMeasure = dvExtractor.extract(measure, docID, 0)
+        agg.update(0, docMeasure)
+      }
       i = docs.nextSetBit(i + 1)
     }
+    log.info(f"document aggregation time :${(System.nanoTime() - aggStart) * 1e-9}%6.3f sec")
+    agg
+  }
 
+  //TODO: Use term dictionary to extract dimension and avoid dv seeks
+  def facet(queryStr: String,
+            dimension: String,
+            dimOffset: Int,
+            agg: OLAPAggregator): OLAPAggregator = {
+    val scoreStart = System.nanoTime()
+    val docs = searchDocs(queryStr)
+    log.info(f"document scoring time: ${(System.nanoTime() - scoreStart) * 1e-9}%6.3f sec")
+
+    val aggStart = System.nanoTime()
+    var i = docs.nextSetBit(0)
+    while (i >= 0) {
+      val docID = docs.nextSetBit(i)
+      val offset = dvExtractor.getOffset(dimension, docID)
+      var j = 0
+      while (j < offset) {
+        val idx = dvExtractor.extract(dimension, docID, j).asInstanceOf[Long].toInt
+        val scaledIdx = idx - dimOffset
+        agg.update(scaledIdx, 1L)
+        j += 1
+      }
+      i = docs.nextSetBit(i + 1)
+    }
     log.info(f"document aggregation time :${(System.nanoTime() - aggStart) * 1e-9}%6.3f sec")
     agg
   }
@@ -183,30 +212,26 @@ class LuceneShard(reader: IndexReader,
 
     log.info(f"document filtering time :${(System.nanoTime() - filterStart) * 1e-9}%6.3f sec")
 
-    log.info(s"scored docs ${docs.length} filtered docs ${filteredDocs.size}")
+    log.info(s"scored docs ${docs.cardinality()} filtered docs ${filteredDocs.cardinality()}")
 
     val aggStart = System.nanoTime()
     var i = docs.nextSetBit(0)
     while (i >= 0) {
       val docID = docs.nextSetBit(i)
-      // TODO: When measure is sparse, then dvExtractor extract with offset should be called
-      val docMeasure = dvExtractor.extract(measure, docID, 0)
-      val offset = dvExtractor.getOffset(dimension, docID)
-      var j = 0
-      while (j < offset) {
-        val idx = dvExtractor.extract(dimension, docID, j).asInstanceOf[Long].toInt
-        val scaledIdx = idx - dimOffset
-        // Either docMeasure will be called measureOffset times
-        // OR docMeasure will be called with scaledIdx offset
-        // We take a sparse flag ? does it generalize ?
-        // TODO: If the document does not have value, 0 is returned, for age field with ? 0
-        // TODO: docvalue is being returned, why ? clean the if condition
-        if (scaledIdx >= 0) agg.update(scaledIdx, docMeasure)
-        j += 1
+      val measureOffset = dvExtractor.getOffset(measure, docID)
+      if (measureOffset > 0) {
+        val docMeasure = dvExtractor.extract(measure, docID, 0)
+        val offset = dvExtractor.getOffset(dimension, docID)
+        var j = 0
+        while (j < offset) {
+          val idx = dvExtractor.extract(dimension, docID, j).asInstanceOf[Long].toInt
+          val scaledIdx = idx - dimOffset
+          agg.update(scaledIdx, docMeasure)
+          j += 1
+        }
       }
       i = docs.nextSetBit(i + 1)
     }
-
     log.info(f"document aggregation time :${(System.nanoTime() - aggStart) * 1e-9}%6.3f sec")
     agg
   }
@@ -229,20 +254,23 @@ class LuceneShard(reader: IndexReader,
     val filteredDocs = filter(docs, timeColumn.get, minTime, maxTime)
     log.info(f"document filtering time :${(System.nanoTime() - filterStart) * 1e-9}%6.3f sec")
 
-    log.info(s"scored docs ${docs.length} filtered docs ${filteredDocs.size}")
+    log.info(s"scored docs ${docs.cardinality()} filtered docs ${filteredDocs.cardinality()}")
 
     val aggStart = System.nanoTime()
     var i = docs.nextSetBit(0)
     while (i >= 0) {
       val docID = docs.nextSetBit(i)
-      val docMeasure = dvExtractor.extract(measure, docID, 0)
-      val offset = dvExtractor.getOffset(timeColumn.get, docID)
-      var j = 0
-      while (j < offset) {
-        val timestamp = dvExtractor.extract(timeColumn.get, docID, j).asInstanceOf[Long]
-        val idx = (timestamp - minTime) / rollup
-        agg.update(idx.toInt, docMeasure)
-        j += 1
+      val measureOffset = dvExtractor.getOffset(measure, docID)
+      if (measureOffset > 0) {
+        val docMeasure = dvExtractor.extract(measure, docID, 0)
+        val offset = dvExtractor.getOffset(timeColumn.get, docID)
+        var j = 0
+        while (j < offset) {
+          val timestamp = dvExtractor.extract(timeColumn.get, docID, j).asInstanceOf[Long]
+          val idx = (timestamp - minTime) / rollup
+          agg.update(idx.toInt, docMeasure)
+          j += 1
+        }
       }
       i = docs.nextSetBit(i + 1)
     }

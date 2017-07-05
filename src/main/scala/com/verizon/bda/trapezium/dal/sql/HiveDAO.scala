@@ -34,6 +34,9 @@ class HiveDAO(database: String, tableName: String)(implicit sqlContext: HiveCont
 
   require(database != null && tableName != null)
 
+  sqlContext.sql(s"use ${database}")
+
+
   private def tableExists = sqlContext.tableNames(database).contains(tableName)
 
   /**
