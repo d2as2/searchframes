@@ -20,7 +20,11 @@
 			<artifactId>solr-solrj</artifactId>
 			<version>5.5.4</version>
 		</dependency>
-
+		<dependency>
+			<groupId>org.zeroturnaround</groupId>
+			<artifactId>zt-zip</artifactId>
+			<version>1.11</version>
+		</dependency>
 		<dependency>
 			<groupId>com.jcraft</groupId>
 			<artifactId>jsch</artifactId>
