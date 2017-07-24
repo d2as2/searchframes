@@ -9,8 +9,7 @@ import org.apache.lucene.analysis.core.KeywordAnalyzer
 import org.apache.lucene.index._
 import org.apache.lucene.index.IndexWriterConfig.OpenMode
 import org.apache.lucene.store.MMapDirectory
-import org.apache.spark.mllib.linalg.Vectors
-import org.apache.spark.sql.types.{ArrayType,StructField,StructType}
+import org.apache.spark.sql.types.{ArrayType, StructField, StructType}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.functions._
@@ -19,7 +18,9 @@ import org.apache.spark.storage.StorageLevel
 import java.sql.Time
 import java.io.File
 import org.apache.spark.util.{DalUtils, RDDUtils}
+import scala.collection.mutable
 import scala.util.Random
+import org.apache.spark.mllib.linalg.Vectors
 
 class LuceneDAO(val location: String,
                 val searchFields: Set[String],
@@ -55,30 +56,39 @@ class LuceneDAO(val location: String,
     this
   }
 
+  // TODO: Support measures that are MapType with keys as the hierarchical dimension
   /**
-   * Udf to compute the indices and values for sparse vector, more than one columns are combined
-   * to generate one feature vector idea here is to support multiple
-   */
-  private val featureVectorUdf = udf { (measure: Map[String, Double]) =>
-    val indVal = measure.toList.map { x =>
-      val index = dictionary.indexOf(x._1)
-      assert(index > 0, "measure dimension must be included in dimensions")
-      (dictionary.indexOf(x._1), x._2)
-    }.sortBy(_._1).toArray
-    Vectors.sparse(indVal.size, indVal.map(_._1), indVal.map(_._2))
+    * Udf to compute the indices and values for sparse vector.
+    * Here s is storedDimension and m is featureColumns mapped as Array
+    * corresponding to the dimensions
+    */
+  val featureIndexUdf = udf { (s: mutable.WrappedArray[String],
+                               m: mutable.WrappedArray[Map[String, Double]]) =>
+    val indVal = s.zip(m).flatMap { x =>
+      if (x._2 == null)
+        Map[Int, Double]()
+      else {
+        val output: Map[Int, Double] = x._2.map(kv => (_dictionary.indexOf(x._1, kv._1), kv._2))
+        output.filter(_._1 >= 0)
+      }
+    }.sortBy(_._1)
+    Vectors.sparse(indVal.size, indVal.map(_._1).toArray, indVal.map(_._2).toArray)
   }
 
   /**
-    * sparse measures should be Map[Dimension->(Int, Float, Double, Long)], dense
-    * measures can be single value / multi-valued. sparse measures are dictionary
-    * encoded and converted to sparse vector
+    * 2 step process to generate feature vectors:
+    * Step 1: Collect all the featureColumns in arrFeatures that
+    * should go into feature vector.
+    * Step 2: Pass arrFeatures and the featureColumns to featureIndexUdf
+    * to generate the vector
     */
-  def vectorize(df: DataFrame, colName: String): DataFrame = {
-    val featureColumns = dictionary.getNames.toArray
-    if (featureColumns == null || featureColumns.isEmpty) return df
-    val vectorizedInput =
-      df.withColumn(s"${colName}_vector", featureVectorUdf(df(colName)))
-    vectorizedInput.drop(colName).withColumnRenamed(s"${colName}_vector", colName)
+  def vectorize(df: DataFrame, vectorizedColumn: String,
+                dimension: Seq[String],
+                features: Seq[String]): DataFrame = {
+    val dfWithFeatures = df.withColumn("arrFeatures", array(features.map(df(_)): _*))
+    val vectorized = dfWithFeatures.withColumn(vectorizedColumn,
+      featureIndexUdf(array(dimension.map(lit(_)): _*), dfWithFeatures("arrFeatures")))
+    vectorized.drop("arrFeatures")
   }
 
   // TODO: If index already exist we have to merge dictionary and update indices

@@ -118,21 +118,6 @@ class DictionaryManager extends Serializable {
   }
 
   /**
-    * Given the dimension find the field and calculate the index of the dimension.
-    *
-    * @param feature Feature name for which the index is fetched.
-    * @return Int index of the feature name in the dictionary.
-    */
-  def indexOf(feature: String): Int = {
-    var index = -1
-    getNames().foreach(fieldName => {
-      index = indexOf(fieldName, feature)
-      if (index > 0) return index
-    })
-    index
-  }
-  
-  /**
     * Given the dimension, return the start and end positions of the indices.
     *
     * @param name name of the dimension.

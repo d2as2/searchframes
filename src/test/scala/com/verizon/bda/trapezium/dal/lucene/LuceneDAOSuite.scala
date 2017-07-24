@@ -74,15 +74,15 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
 
     val dao = new LuceneDAO(dictPath, dimensions, storedDimensions, measures)
 
-    val svisits1 = Map("verizon.com" -> 1.0, "google.com" -> 4.0, "instagram" -> 4.0)
-    val svisits2 = Map("apple.com" -> 8.0, "google.com" -> 3.0)
-
     val df = sqlContext.createDataFrame(
-      Seq(("123", "94555", Array("verizon.com", "google.com"), Array("instagram"), svisits1, 8),
-        ("456", "94310", Array("apple.com", "google.com"), null, svisits2, 7))).
-      toDF("user", "zip", "tld", "appname", "svisits", "visits")
+      Seq(("123", "94555", Array("verizon.com", "google.com"), Array("instagram"),
+        Map("verizon.com" -> 1.0, "google.com" -> 4.0), Map("instagram" -> 4.0), 8),
+        ("456", "94310", Array("apple.com", "google.com"), null,
+          Map("apple.com" -> 8.0, "google.com" -> 3.0), null, 7))).
+      toDF("user", "zip", "tld", "appname", "tldvisits", "appvisits", "visits")
 
-    val vectorized = dao.encodeDictionary(df).vectorize(df, "svisits")
+    val vectorized = dao.encodeDictionary(df).vectorize(df, "svisits",
+      Seq("tld", "appname"), Seq("tldvisits", "appvisits")).drop("tldvisits").drop("appvisits")
 
     val result1 = vectorized.filter("user = '123'").first().getAs[SparseVector]("svisits")
     assert(result1 == Vectors.sparse(3, Array(2, 4, 5), Array(4.0, 1.0, 4.0)))

@@ -8,6 +8,9 @@ import org.apache.spark.Logging
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types.TimestampType
 import java.util.BitSet
+
+import org.apache.spark.sql.catalyst.InternalRow
+
 import scala.collection.mutable.ArrayBuffer
 
 /**

@@ -1,8 +1,11 @@
 package com.verizon.bda.trapezium.dal.lucene
 
+import breeze.optimize.proximal.NonlinearMinimizer.Projection
 import com.verizon.bda.trapezium.dal.exceptions.LuceneDAOException
 import org.apache.spark.Logging
 import org.apache.spark.sql.Row
+import org.apache.spark.sql.catalyst.InternalRow
+import org.apache.spark.sql.catalyst.expressions.{UnsafeProjection, UnsafeRow}
 import org.apache.spark.sql.types._
 
 /**
@@ -50,6 +53,18 @@ class DocValueExtractor(leafReaders: Seq[LuceneReader],
           extractStored(docID, column)
         else throw new LuceneDAOException(s"unsupported ${column} in doc value extraction")
       })
+
+      // TODO: InternalRow.fromSeq brought the native bytes from docvalue to JVM
+      // Idea is to avoid the pressure on JVM
+      /*
+      val iRow = InternalRow.fromSeq(sqlFields)
+      val projection = UnsafeProjection.create(schema)
+      val unsafeRow = projection.apply(iRow)
+      */
+      // TODO: We create a offheap UnsafeRow and then copy each byte to the UnsafeRow
+      UnsafeRow.calculateBitSetWidthInBytes()
+      val uRow = UnsafeRow.createFromByteArray(schema.fields(0).dataType.defaultSize,columns.size)
+
       Row.fromSeq(sqlFields)
     } else {
       Row.empty
