@@ -53,24 +53,12 @@ class DocValueExtractor(leafReaders: Seq[LuceneReader],
           extractStored(docID, column)
         else throw new LuceneDAOException(s"unsupported ${column} in doc value extraction")
       })
-
-      // TODO: InternalRow.fromSeq brought the native bytes from docvalue to JVM
-      // Idea is to avoid the pressure on JVM
-      /*
-      val iRow = InternalRow.fromSeq(sqlFields)
-      val projection = UnsafeProjection.create(schema)
-      val unsafeRow = projection.apply(iRow)
-      */
-      // TODO: We create a offheap UnsafeRow and then copy each byte to the UnsafeRow
-      UnsafeRow.calculateBitSetWidthInBytes()
-      val uRow = UnsafeRow.createFromByteArray(schema.fields(0).dataType.defaultSize,columns.size)
-
       Row.fromSeq(sqlFields)
     } else {
       Row.empty
     }
   }
-
+  
   def getOffset(column: String, docID: Int): Int = {
     dvMap(column).getOffset(docID)
   }
