@@ -14,7 +14,7 @@ import org.joda.time.LocalDate
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
-
+import scala.collection.mutable.{ArrayBuffer => MArray, Map => MMap}
 
 /**
   * Created by venkatesh on 7/10/17.
@@ -81,31 +81,64 @@ class ScpIndexFiles {
 }
 
 object ScpIndexFiles {
-  def moveFilesFromHdfsToLocal(config: Config): Unit = {
+  val log = Logger.getLogger(classOf[ScpIndexFiles])
+
+  def moveFilesFromHdfsToLocal(config: Config): Map[String, ListBuffer[String]] = {
+    var map = MMap[String, ListBuffer[String]]()
     val solrNodeHosts = config.getStringList("solrNodeHosts").asScala
     val solrNodeUser = config.getString("user")
     val solrNodePassword = config.getString("solrNodePassword")
-    val lib = new ListBuffer[ScpIndexFiles]
-    val localDate = new LocalDate().toString("YYYY_MM_DD")
-    val dataDir = config.getString("dataDir")
-    val directory = s"${dataDir}_${localDate}"
+    val solrNodes = new ListBuffer[ScpIndexFiles]
+    val localDate = new LocalDate().toString("YYYY_MM_dd")
+    val parentDataDir = config.getString("parentDataDir")
+    val directory = s"${parentDataDir}_${localDate}"
     for (host <- solrNodeHosts) {
       val scpHost = new ScpIndexFiles
       scpHost.initSession(host, solrNodeUser, solrNodePassword)
       val command = s"mkdir ${directory}"
       scpHost.runCommand(command, false)
-      lib.append(scpHost)
+      solrNodes.append(scpHost)
     }
     val arr = getHdfsList(config)
     //    val atmic = new AtomicInteger(0)
     var count = 0
     // todo make multi threaded
+//    arr.toSeq.par.map {
+//      ???
+//    }
+
     for (file <- arr) {
-      val command = s"hdfs dfs -copyToLocal $file ${directory}"
-      lib(count).runCommand(command, true)
+      val fileName = file.split("/").last
+      val machine = solrNodes(count)
+      // todo replication will be take care later
+      //      val replicationCount = config.getInt("replication")
+      //      var str = ""
+      //      val zipFile = s"${directory}/$fileName.zip"
+      //      for (i <- Range(1, replicationCount, 1)) {
+      //        val host = solrNodes(count + 1).session.getHost
+      //        str = s"scp ${zipFile} "
+      //      }
+      var command = s"hdfs dfs -copyToLocal $file ${directory};" +
+        s"mkdir ${directory}/$fileName/index;" +
+        s"mv  ${directory}/$fileName/[^index]*  ${directory}/$fileName/index/.;" +
+        s"rm  ${directory}/$fileName/index/*.lock;chmod 777 -R ${directory};"
+      // todo as a part of replication
+      //  s"zip -r ${directory}/$fileName.zip ${directory}/$fileName;"
+
+
+      machine.runCommand(command, true)
+      val host = machine.session.getHost
+      if (map.contains(host)) {
+        map(host).append(s"${directory}/$fileName")
+      } else {
+        map(host) = new ListBuffer[String]
+        map(host).append(s"${directory}/$fileName")
+      }
       count = (count + 1) % solrNodeHosts.size
     }
-    lib.foreach(_.disconnectSession())
+    solrNodes.foreach(_.disconnectSession())
+    log.info(s"map prepared was " + map.toMap)
+    return map.toMap[String, ListBuffer[String]]
   }
 
   def getHdfsList(config: Config): Array[String] = {
