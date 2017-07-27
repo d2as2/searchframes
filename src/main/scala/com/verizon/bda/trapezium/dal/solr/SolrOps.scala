@@ -36,25 +36,29 @@ class SolrOps(config: Config, map: Map[String, ListBuffer[String]]) {
     // "
     var i = 1
     for ((k, v) <- map) {
+      val solrServer = new HttpSolrClient(k + ":8983/solr")
+
       for (directory <- v.toList) {
-        val solrServer = new HttpSolrClient(k + ":8983/solr")
 
         val coreCreate = new CoreAdminRequest.Create()
         val id = directory.split("-").last
         val name = s"${alaiasedCollectionName}_shard${i}_replica1"
+        val coreName = s"${alaiasedCollectionName}_shard${id}_replica1"
         coreCreate.setCoreName(name)
         coreCreate.setDataDir(directory)
         coreCreate.setCollectionConfigName(configName)
         coreCreate.setCollection(alaiasedCollectionName)
         coreCreate.setShardId(s"shard${i}")
+        coreCreate.setCoreNodeName(coreName)
         val response = coreCreate.process(cloudClient)
         i = i + 1
         Thread.sleep(1000)
         log.info(s"created core with name:${name} in collection ${alaiasedCollectionName}" +
           s"on host: ${k} on data dir ${directory} optained response ${response}")
-        solrServer.close()
+
 
       }
+      solrServer.close()
     }
   }
 
