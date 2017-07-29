@@ -24,7 +24,7 @@ class DocValueExtractor(leafReaders: Seq[LuceneReader],
       val fieldMultiValued = (field.dataType.isInstanceOf[ArrayType])
       // Dimensions have gone through DictionaryEncoding and uses sorted-setnumeric storage
       val accessor = if (storedDimensions.contains(fieldName)) {
-        DocValueAccessor(leafReaders, fieldName, IntegerType, fieldMultiValued, ser)
+        DocValueAccessor(leafReaders, fieldName, IntegerType, true, ser)
       } else {
         DocValueAccessor(leafReaders, fieldName, field.dataType, fieldMultiValued, ser)
       }
