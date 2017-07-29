@@ -22,9 +22,9 @@ class DocValueExtractor(leafReaders: Seq[LuceneReader],
     fields.map { case (field) =>
       val fieldName = field.name
       val fieldMultiValued = (field.dataType.isInstanceOf[ArrayType])
-      // Dimensions have gone through DictionaryEncoding and uses sortedsetnumeric storage
+      // Dimensions have gone through DictionaryEncoding and uses sorted-setnumeric storage
       val accessor = if (storedDimensions.contains(fieldName)) {
-        DocValueAccessor(leafReaders, fieldName, IntegerType, true, ser)
+        DocValueAccessor(leafReaders, fieldName, IntegerType, fieldMultiValued, ser)
       } else {
         DocValueAccessor(leafReaders, fieldName, field.dataType, fieldMultiValued, ser)
       }
@@ -39,7 +39,7 @@ class DocValueExtractor(leafReaders: Seq[LuceneReader],
     if (offset <= 0) return null
     //multi-value dimension/measure
     if (offset > 1) Seq((0 until offset).map(dvMap(column).extract(docID, _)): _*)
-    else dvMap(column).extract(docID, offset - 1)
+    else dvMap(column).extract(docID, 0)
   }
 
   // only storedDimensions and measures can be extracted

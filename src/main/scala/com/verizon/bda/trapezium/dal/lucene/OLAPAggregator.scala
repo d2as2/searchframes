@@ -43,7 +43,7 @@ class Sum extends OLAPAggregator {
   override def update(idx: Int, input: Any): Unit = {
     buffer(idx) += input.asInstanceOf[Long]
   }
-  
+
   def merge(other: OLAPAggregator): OLAPAggregator = {
     var idx = 0
     while (idx < buffer.length) {
