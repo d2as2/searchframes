@@ -1,11 +1,8 @@
 package com.verizon.bda.trapezium.dal.lucene
 
-import breeze.optimize.proximal.NonlinearMinimizer.Projection
 import com.verizon.bda.trapezium.dal.exceptions.LuceneDAOException
 import org.apache.spark.Logging
 import org.apache.spark.sql.Row
-import org.apache.spark.sql.catalyst.InternalRow
-import org.apache.spark.sql.catalyst.expressions.{UnsafeProjection, UnsafeRow}
 import org.apache.spark.sql.types._
 
 /**
@@ -58,7 +55,7 @@ class DocValueExtractor(leafReaders: Seq[LuceneReader],
       Row.empty
     }
   }
-  
+
   def getOffset(column: String, docID: Int): Int = {
     dvMap(column).getOffset(docID)
   }

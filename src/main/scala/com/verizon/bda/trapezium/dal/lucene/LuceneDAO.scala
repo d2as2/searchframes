@@ -56,11 +56,11 @@ class LuceneDAO(val location: String,
     this
   }
 
-  // TODO: Support measures that are MapType with keys as the hierarchical dimension
   /**
     * Udf to compute the indices and values for sparse vector.
     * Here s is storedDimension and m is featureColumns mapped as Array
-    * corresponding to the dimensions
+    * corresponding to the dimensions. Support measures that are MapType
+    * with keys as the hierarchical dimension
     */
   val featureIndexUdf = udf { (s: mutable.WrappedArray[String],
                                m: mutable.WrappedArray[Map[String, Double]]) =>
@@ -72,7 +72,7 @@ class LuceneDAO(val location: String,
         output.filter(_._1 >= 0)
       }
     }.sortBy(_._1)
-    Vectors.sparse(indVal.size, indVal.map(_._1).toArray, indVal.map(_._2).toArray)
+    Vectors.sparse(_dictionary.size, indVal.map(_._1).toArray, indVal.map(_._2).toArray)
   }
 
   /**
@@ -418,7 +418,7 @@ class LuceneDAO(val location: String,
   }
 
   def facet(queryStr: String,
-            dimension: String): Map[String, Any] = {
+            dimension: String): Map[String, Long] = {
     if (shards == null) throw new LuceneDAOException(s"timeseries called with null shards")
 
     log.info(s"query ${queryStr} dimension ${dimension}")
@@ -444,9 +444,8 @@ class LuceneDAO(val location: String,
     val facets = results.eval().zipWithIndex
 
     val transformed = facets.map { case (value: Any, index: Int) =>
-      (dictionary.getFeatureName(dimOffset + index), value)
+      (dictionary.getFeatureName(dimOffset + index), value.asInstanceOf[Long])
     }.toMap
-
     transformed
   }
 }

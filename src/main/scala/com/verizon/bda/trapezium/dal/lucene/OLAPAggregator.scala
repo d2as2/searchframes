@@ -34,20 +34,20 @@ abstract class OLAPAggregator extends Serializable {
 }
 
 class Sum extends OLAPAggregator {
-  var buffer: Array[Float] = _
+  var buffer: Array[Long] = _
 
   override def init(size: Int): Unit = {
-    buffer = Array.fill[Float](size)(0)
+    buffer = Array.fill[Long](size)(0L)
   }
 
   override def update(idx: Int, input: Any): Unit = {
-    buffer(idx) += input.asInstanceOf[Long].toFloat
+    buffer(idx) += input.asInstanceOf[Long]
   }
-
+  
   def merge(other: OLAPAggregator): OLAPAggregator = {
     var idx = 0
     while (idx < buffer.length) {
-      buffer(idx) += other.get(idx).asInstanceOf[Float]
+      buffer(idx) += other.get(idx).asInstanceOf[Long]
       idx += 1
     }
     this
