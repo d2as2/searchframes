@@ -9,7 +9,7 @@ import com.typesafe.config.ConfigFactory
   */
 object SolrTests {
   def main(args: Array[String]): Unit = {
-    val config = ConfigFactory.parseFile(new File("solrLucen.conf"))
+    val config = ConfigFactory.parseFile(new File("solrLucene.conf"))
 
     val map = ScpIndexFiles.moveFilesFromHdfsToLocal(config)
     val solrOps = new SolrOps(config, map)

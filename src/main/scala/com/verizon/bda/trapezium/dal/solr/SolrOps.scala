@@ -1,18 +1,13 @@
 package com.verizon.bda.trapezium.dal.solr
 
-import java.io.File
-import java.nio.file.{FileSystems, Path, Paths}
+import java.nio.file.{Path, Paths}
 import java.util
-
 import com.typesafe.config.Config
-import org.apache.http.client.HttpClient
 import org.apache.log4j.Logger
-import org.apache.solr.client.solrj.impl.{CloudSolrClient, HttpSolrClient, HttpSolrServer}
+import org.apache.solr.client.solrj.impl.{CloudSolrClient, HttpSolrClient}
 import org.apache.solr.client.solrj.request.{CollectionAdminRequest, CoreAdminRequest}
 import org.apache.solr.client.solrj.response.CollectionAdminResponse
 import org.joda.time.LocalDate
-import org.zeroturnaround.zip.ZipUtil
-
 import scala.collection.mutable.ListBuffer
 
 /**
@@ -55,21 +50,17 @@ class SolrOps(config: Config, map: Map[String, ListBuffer[String]]) {
         Thread.sleep(1000)
         log.info(s"created core with name:${name} in collection ${alaiasedCollectionName}" +
           s"on host: ${k} on data dir ${directory} optained response ${response}")
-
-
       }
       solrServer.close()
     }
   }
 
   def aliasCollection(config: Config): Unit = {
-
     val coreCreate = new CollectionAdminRequest.CreateAlias
     coreCreate.setAliasedCollections(alaiasedCollectionName)
     coreCreate.setAliasName(config.getString("aliasName"))
     val response = coreCreate.process(cloudClient)
     log.info(response.getResponse.asMap(5).toString)
-
   }
 
   def reloadCollection(aliasedCollection: String): Unit = {
