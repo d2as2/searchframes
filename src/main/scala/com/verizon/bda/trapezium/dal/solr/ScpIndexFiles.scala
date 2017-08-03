@@ -1,20 +1,18 @@
 package com.verizon.bda.trapezium.dal.solr
 
-import java.io.{BufferedReader, File, InputStream, InputStreamReader}
+import java.io.InputStream
 import java.net.URI
-import java.util
-import java.util.concurrent.atomic.AtomicInteger
 
 import com.jcraft.jsch.{ChannelExec, JSch, Session}
-import com.typesafe.config.{Config, ConfigFactory}
+import com.typesafe.config.Config
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, FileUtil, Path}
 import org.apache.log4j.Logger
 import org.joda.time.LocalDate
 
 import scala.collection.JavaConverters._
-import scala.collection.mutable.ListBuffer
-import scala.collection.mutable.{ArrayBuffer => MArray, Map => MMap}
+import scala.collection.mutable.{ListBuffer, ArrayBuffer => MArray, Map => MMap}
+import scala.collection.parallel.mutable.ParArray
 
 /**
   * Created by venkatesh on 7/10/17.
@@ -85,6 +83,7 @@ object ScpIndexFiles {
 
   def moveFilesFromHdfsToLocal(config: Config): Map[String, ListBuffer[String]] = {
     var map = MMap[String, ListBuffer[String]]()
+    //    val map = new ConcurrentHashMap[String, ListBuffer[String]]
     val solrNodeHosts = config.getStringList("solrNodeHosts").asScala
     val solrNodeUser = config.getString("user")
     val solrNodePassword = config.getString("solrNodePassword")
@@ -102,40 +101,37 @@ object ScpIndexFiles {
     val arr = getHdfsList(config)
     //    val atmic = new AtomicInteger(0)
     var count = 0
-    // todo make multi threaded
-//    arr.toSeq.par.map {
-//      ???
-//    }
 
-    for (file <- arr) {
+    import scala.collection.parallel._
+    val pc: Array[(ScpIndexFiles, String, String)] = arr.map(file => {
       val fileName = file.split("/").last
-      val machine = solrNodes(count)
-      // todo replication will be take care later
-      //      val replicationCount = config.getInt("replication")
-      //      var str = ""
-      //      val zipFile = s"${directory}/$fileName.zip"
-      //      for (i <- Range(1, replicationCount, 1)) {
-      //        val host = solrNodes(count + 1).session.getHost
-      //        str = s"scp ${zipFile} "
-      //      }
+      val machine: ScpIndexFiles = solrNodes(count)
+
+
       var command = s"hdfs dfs -copyToLocal $file ${directory};" +
         s"mkdir ${directory}/$fileName/index;" +
         s"mv  ${directory}/$fileName/[^index]*  ${directory}/$fileName/index/.;" +
         s"rm  ${directory}/$fileName/index/*.lock;chmod 777 -R ${directory};"
-      // todo as a part of replication
-      //  s"zip -r ${directory}/$fileName.zip ${directory}/$fileName;"
+      count = (count + 1) % solrNodeHosts.size
+      (machine, command, fileName)
+    })
+    val pc1: ParArray[(ScpIndexFiles, String, String)] = mutable.ParArray.createFromCopy(pc)
 
-
-      machine.runCommand(command, true)
-      val host = machine.session.getHost
+    pc1.tasksupport = new ForkJoinTaskSupport(new scala.concurrent.forkjoin.ForkJoinPool(arr.size))
+    pc1.map(p => {
+      p._1.runCommand(p._2, true)
+    })
+    for ((i, j, k) <- pc) {
+      val host = i.session.getHost
+      val fileName = k
       if (map.contains(host)) {
         map(host).append(s"${directory}/$fileName")
       } else {
         map(host) = new ListBuffer[String]
         map(host).append(s"${directory}/$fileName")
       }
-      count = (count + 1) % solrNodeHosts.size
     }
+
     solrNodes.foreach(_.disconnectSession())
     log.info(s"map prepared was " + map.toMap)
     return map.toMap[String, ListBuffer[String]]

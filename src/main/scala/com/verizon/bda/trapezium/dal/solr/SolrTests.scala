@@ -9,13 +9,17 @@ import com.typesafe.config.ConfigFactory
   */
 object SolrTests {
   def main(args: Array[String]): Unit = {
-    val config = ConfigFactory.parseFile(new File("solrLucene.conf"))
+    val config = ConfigFactory.parseFile(new File("solrLucen.conf"))
 
-    val map = ScpIndexFiles.moveFilesFromHdfsToLocal(config)
-    val solrOps = new SolrOps(config, map)
-    solrOps.upload(config.getString("mothly_collection"))
+    val map=ScpIndexFiles.moveFilesFromHdfsToLocal(config)
+
+    val solrOps=new SolrOps(config,map)
+    solrOps.upload()
+    //    val sci = new scpIndexFiles()
+
     solrOps.createCollection(config)
     solrOps.createCores()
+    solrOps.aliasCollection(config)
 
   }
 }

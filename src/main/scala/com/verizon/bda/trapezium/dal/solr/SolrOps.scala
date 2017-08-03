@@ -2,13 +2,16 @@ package com.verizon.bda.trapezium.dal.solr
 
 import java.nio.file.{Path, Paths}
 import java.util
+
 import com.typesafe.config.Config
 import org.apache.log4j.Logger
-import org.apache.solr.client.solrj.impl.{CloudSolrClient, HttpSolrClient}
-import org.apache.solr.client.solrj.request.{CollectionAdminRequest, CoreAdminRequest}
+import org.apache.solr.client.solrj.impl.CloudSolrClient
+import org.apache.solr.client.solrj.request.CollectionAdminRequest
 import org.apache.solr.client.solrj.response.CollectionAdminResponse
 import org.joda.time.LocalDate
+
 import scala.collection.mutable.ListBuffer
+import scalaj.http.{Http, HttpResponse}
 
 /**
   * Created by venkatesh on 7/12/17.
@@ -18,47 +21,67 @@ class SolrOps(config: Config, map: Map[String, ListBuffer[String]]) {
   lazy val log = Logger.getLogger(classOf[SolrOps])
   val localDate = new LocalDate().toString("YYYY_MM_dd")
   val appName = config.getString("appName")
+  val collectionPrefix = config.getString("collection_prefix")
+  val aliasCollectionName = config.getString("aliasName")
+  lazy val collectionName = s"${collectionPrefix}_${localDate}"
 
-  lazy val alaiasedCollectionName = s"${appName}_${localDate}"
+  val configName = s"$appName/${aliasCollectionName}"
 
-  var configName = ""
+  def getSolrclient(): CloudSolrClient = {
+    val zkHosts = config.getStringList("zkHosts")
+    val chroot = config.getString("zroot")
+    val cloudSolrClient: CloudSolrClient = new CloudSolrClient(zkHosts, chroot)
+    cloudSolrClient
+  }
+
+  def createCollection(config: Config): Unit = {
+    val solrConfigName = configName
+    val req = new CollectionAdminRequest.Create()
+    log.info(s"creating collection : ${collectionName} with shards per")
+    val response: CollectionAdminResponse = req.setCollectionName(collectionName)
+      .setReplicationFactor(1)
+      .setNumShards(1)
+      .setConfigName(solrConfigName)
+      .process(cloudClient)
+
+    log.info(s"created collection :${collectionName} "
+      + response.getResponse.asMap(5).toString)
+  }
 
   def createCores(): Unit = {
-
-    val localDate = new LocalDate().toString("YYYY_MM_dd")
-    //    val dataDir = config.getString("dataDir")
-    //    val directory = s"${dataDir}_${localDate}
-    // "
     var i = 1
-    for ((k, v) <- map) {
-      val solrServer = new HttpSolrClient(k + ":8983/solr")
-
-      for (directory <- v.toList) {
-
-        val coreCreate = new CoreAdminRequest.Create()
+    for ((host, fileList) <- map) {
+      for (directory <- fileList.toList) {
         val id = directory.split("-").last
-        val name = s"${alaiasedCollectionName}_shard${i}_replica1"
-        val coreName = s"${alaiasedCollectionName}_shard${id}_replica1"
-        coreCreate.setCoreName(name)
-        coreCreate.setDataDir(directory)
-        coreCreate.setCollectionConfigName(configName)
-        coreCreate.setCollection(alaiasedCollectionName)
-        coreCreate.setShardId(s"shard${i}")
-        coreCreate.setCoreNodeName(coreName)
-        val response = coreCreate.process(cloudClient)
+        val coreName = s"${collectionName}_shard${id}_replica1"
+        val solrServerUrl = ("http://" + host + ":8983/solr/admin/cores")
+        val url = Http(solrServerUrl)
+        var reponse: HttpResponse[String] = null
+        var retry = 0
+        do {
+          unloadCore(host, coreName)
+          reponse = url.param("action", "CREATE")
+            .param("name", coreName)
+            .param("dataDir", directory)
+            .param("collection", collectionName)
+            .param("shard", s"shard${i}")
+            .param("collection.configName", configName)
+            .param("numshard", id + 1)
+            .asString
+
+          retry = retry + 1
+        } while (reponse.is2xx && retry < 3)
         i = i + 1
-        Thread.sleep(1000)
-        log.info(s"created core with name:${name} in collection ${alaiasedCollectionName}" +
-          s"on host: ${k} on data dir ${directory} optained response ${response}")
+        log.info(s"body:${reponse.body} \nresponse status:${reponse.statusLine}" +
+          s" \nadditional${reponse.headers("status")} ")
       }
-      solrServer.close()
     }
   }
 
   def aliasCollection(config: Config): Unit = {
     val coreCreate = new CollectionAdminRequest.CreateAlias
-    coreCreate.setAliasedCollections(alaiasedCollectionName)
-    coreCreate.setAliasName(config.getString("aliasName"))
+    coreCreate.setAliasedCollections(collectionName)
+    coreCreate.setAliasName(aliasCollectionName)
     val response = coreCreate.process(cloudClient)
     log.info(response.getResponse.asMap(5).toString)
   }
@@ -69,50 +92,27 @@ class SolrOps(config: Config, map: Map[String, ListBuffer[String]]) {
     req.process(cloudClient)
   }
 
-
-  def createCollection(config: Config): Unit = {
-    val replication = config.getInt("replication")
-    val maxShardsPerNode = config.getInt("maxShardsPerNode")
-    val maxShards = config.getInt("maxShards")
-    val solrConfigName = configName
-    val req = new CollectionAdminRequest.Create()
-    log.info(s"creating collection : ${alaiasedCollectionName} with shards per")
-    val response: CollectionAdminResponse = req.setCollectionName(alaiasedCollectionName)
-      .setReplicationFactor(replication)
-      .setMaxShardsPerNode(maxShardsPerNode)
-      .setNumShards(maxShards)
-      .setConfigName(solrConfigName)
-      .process(cloudClient)
-
-    log.info(s"created collection :${alaiasedCollectionName} "
-      + response.getResponse.asMap(5).toString)
+  def unloadCore(node: String, coreName: String): Boolean = {
+    val solrServerUrl = ("http://" + node + ":8983/solr/admin/cores")
+    val url = Http(solrServerUrl)
+    val response: HttpResponse[String] = url.param("action", "UNLOAD")
+      .param("core", coreName)
+      .asString
+    response.is2xx
   }
 
-  def upload(collectionName: String): Unit = {
+
+  def upload(): Unit = {
     val zkHosts: util.List[String] = config.getStringList("zkHosts")
     val solrClient = cloudClient
     val appName = config.getString("appName")
     val path: Path = Paths.get(config.getString("solrConfig"))
-    configName = s"$appName/${collectionName}"
-    val temp1 = config.getString("tempDir1")
-    val temp2 = config.getString("tempDir2")
-    //    ZipUtil.pack(new File(config.getString("solrConfig") ),
-    //      new File(s"${temp1}/conf.zip"))
+
+    log.info(s"uploading to ${configName} from path:${path.toString}")
     solrClient.uploadConfig(path, configName)
-    //    solrClient.downloadConfig(configName, Paths.get(temp2))
-    //    ZipUtil.pack(new File(s"${temp2}"),
-    //      new File(s"${temp2}/conf.zip"))
-    //    require(ZipUtil.archiveEquals(new File(s"${temp1}/conf.zip"),
-    //      new File(s"${temp2}/conf.zip")), "upload conf directory not successful")
+
     log.info("uploaded the config successfully ")
   }
 
 
-  def getSolrclient(): CloudSolrClient = {
-    val zkHosts = config.getStringList("zkHosts")
-    // new CloudSolrClient.Builder().withZkHost(zkHosts).build()
-    val chroot = config.getString("zroot")
-    val cloudSolrClient: CloudSolrClient = new CloudSolrClient(zkHosts, chroot)
-    cloudSolrClient
-  }
 }
