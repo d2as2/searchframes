@@ -11,7 +11,7 @@ object SolrTests {
   def main(args: Array[String]): Unit = {
     val config = ConfigFactory.parseFile(new File("solrLucen.conf"))
 
-    val map=ScpIndexFiles.moveFilesFromHdfsToLocal(config)
+    val map=CollectIndices.moveFilesFromHdfsToLocal(config)
 
     val solrOps=new SolrOps(config,map)
     solrOps.upload()

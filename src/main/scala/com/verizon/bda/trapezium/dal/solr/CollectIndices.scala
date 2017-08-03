@@ -11,15 +11,15 @@ import org.apache.log4j.Logger
 import org.joda.time.LocalDate
 
 import scala.collection.JavaConverters._
-import scala.collection.mutable.{ListBuffer, ArrayBuffer => MArray, Map => MMap}
+import scala.collection.mutable.{ListBuffer, Map => MMap}
 import scala.collection.parallel.mutable.ParArray
 
 /**
   * Created by venkatesh on 7/10/17.
   */
 
-class ScpIndexFiles {
-  val log = Logger.getLogger(classOf[ScpIndexFiles])
+class CollectIndices {
+  val log = Logger.getLogger(classOf[CollectIndices])
   var session: Session = _
 
   def initSession(host: String, user: String, password: String) {
@@ -78,8 +78,8 @@ class ScpIndexFiles {
 
 }
 
-object ScpIndexFiles {
-  val log = Logger.getLogger(classOf[ScpIndexFiles])
+object CollectIndices {
+  val log = Logger.getLogger(classOf[CollectIndices])
 
   def moveFilesFromHdfsToLocal(config: Config): Map[String, ListBuffer[String]] = {
     var map = MMap[String, ListBuffer[String]]()
@@ -87,12 +87,12 @@ object ScpIndexFiles {
     val solrNodeHosts = config.getStringList("solrNodeHosts").asScala
     val solrNodeUser = config.getString("user")
     val solrNodePassword = config.getString("solrNodePassword")
-    val solrNodes = new ListBuffer[ScpIndexFiles]
+    val solrNodes = new ListBuffer[CollectIndices]
     val localDate = new LocalDate().toString("YYYY_MM_dd")
     val parentDataDir = config.getString("parentDataDir")
     val directory = s"${parentDataDir}_${localDate}"
     for (host <- solrNodeHosts) {
-      val scpHost = new ScpIndexFiles
+      val scpHost = new CollectIndices
       scpHost.initSession(host, solrNodeUser, solrNodePassword)
       val command = s"mkdir ${directory}"
       scpHost.runCommand(command, false)
@@ -103,9 +103,9 @@ object ScpIndexFiles {
     var count = 0
 
     import scala.collection.parallel._
-    val pc: Array[(ScpIndexFiles, String, String)] = arr.map(file => {
+    val pc: Array[(CollectIndices, String, String)] = arr.map(file => {
       val fileName = file.split("/").last
-      val machine: ScpIndexFiles = solrNodes(count)
+      val machine: CollectIndices = solrNodes(count)
 
 
       var command = s"hdfs dfs -copyToLocal $file ${directory};" +
@@ -115,7 +115,7 @@ object ScpIndexFiles {
       count = (count + 1) % solrNodeHosts.size
       (machine, command, fileName)
     })
-    val pc1: ParArray[(ScpIndexFiles, String, String)] = mutable.ParArray.createFromCopy(pc)
+    val pc1: ParArray[(CollectIndices, String, String)] = mutable.ParArray.createFromCopy(pc)
 
     pc1.tasksupport = new ForkJoinTaskSupport(new scala.concurrent.forkjoin.ForkJoinPool(arr.size))
     pc1.map(p => {
