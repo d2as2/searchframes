@@ -11,7 +11,7 @@ import org.apache.log4j.Logger
 import org.joda.time.LocalDate
 
 import scala.collection.JavaConverters._
-import scala.collection.mutable.{ListBuffer, Map => MMap}
+import scala.collection.mutable.{ListBuffer, ArrayBuffer => MArray, Map => MMap}
 import scala.collection.parallel.mutable.ParArray
 
 /**
@@ -27,6 +27,7 @@ class CollectIndices {
     session = jsch.getSession(user, host, 22)
     session.setConfig("StrictHostKeyChecking", "no")
     session.setPassword(password)
+    session.setTimeout(10000)
     session.connect()
   }
 
@@ -34,10 +35,9 @@ class CollectIndices {
     session.disconnect
   }
 
-  def runCommand(command: String, retry: Boolean) {
+  def runCommand(command: String, retry: Boolean): Int = {
+    var code = -1
     try {
-
-      var code = -1
       do {
         val channel: ChannelExec = session.openChannel("exec").asInstanceOf[ChannelExec]
         channel.setInputStream(null)
@@ -54,8 +54,10 @@ class CollectIndices {
     } catch {
       case e: Exception => {
         e.printStackTrace()
+        return code
       }
     }
+    return code
   }
 
   def printResult(in: InputStream, channel: ChannelExec): Int = {
@@ -117,7 +119,7 @@ object CollectIndices {
     })
     val pc1: ParArray[(CollectIndices, String, String)] = mutable.ParArray.createFromCopy(pc)
 
-    pc1.tasksupport = new ForkJoinTaskSupport(new scala.concurrent.forkjoin.ForkJoinPool(arr.size))
+    pc1.tasksupport = new ForkJoinTaskSupport(new scala.concurrent.forkjoin.ForkJoinPool(20))
     pc1.map(p => {
       p._1.runCommand(p._2, true)
     })
