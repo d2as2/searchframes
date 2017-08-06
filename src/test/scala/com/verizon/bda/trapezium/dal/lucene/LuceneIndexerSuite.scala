@@ -36,13 +36,12 @@ class TestConverter extends SparkLuceneConverter {
 
       case StructField(name: String, ArrayType(IntegerType, _), _, _) =>
         r.getList[Int](indicesIndex).asScala.foreach { i =>
-          d.add(new IntField(name, i, Field.Store.YES))
+          d.add(new IntPoint(name, i))
         }
     }
-
     d
   }
-
+  
   lazy val tldIndex = schema.fieldIndex("tld")
   lazy val indicesIndex = schema.fieldIndex("indices")
 

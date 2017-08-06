@@ -1,6 +1,7 @@
 package com.verizon.bda.trapezium.dal.lucene
 
 import java.io.IOException
+
 import com.verizon.bda.trapezium.dal.exceptions.LuceneDAOException
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileStatus, FileSystem, PathFilter, Path => HadoopPath}
@@ -17,7 +18,9 @@ import org.apache.spark.sql.{DataFrame, Row}
 import org.apache.spark.storage.StorageLevel
 import java.sql.Time
 import java.io.File
+
 import org.apache.spark.util.{DalUtils, RDDUtils}
+
 import scala.collection.mutable
 import scala.util.Random
 import org.apache.spark.mllib.linalg.Vectors
@@ -33,7 +36,9 @@ class LuceneDAO(val location: String,
   val PREFIX = "trapezium-lucenedao"
   val SUFFIX = "part-"
 
+  val INDICES_PREFIX = "indices"
   val INDEX_PREFIX = "index"
+
   val DICTIONARY_PREFIX = "dictionary"
   val SCHEMA_PREFIX = "schema"
 
@@ -94,7 +99,7 @@ class LuceneDAO(val location: String,
   // TODO: If index already exist we have to merge dictionary and update indices
   def index(dataframe: DataFrame, time: Time): Unit = {
     val locationPath = location.stripSuffix("/") + "/"
-    val indexPath = locationPath + INDEX_PREFIX
+    val indicesPath = locationPath + INDICES_PREFIX
     val dictionaryPath = locationPath + DICTIONARY_PREFIX
     val schemaPath = locationPath + SCHEMA_PREFIX
 
@@ -135,7 +140,7 @@ class LuceneDAO(val location: String,
         r => {
           try {
             val d = converter.rowToDoc(r)
-            indexWriter.addDocument(d);
+            indexWriter.addDocument(d)
           } catch {
             case e: Throwable => {
               throw new LuceneDAOException(s"Error with adding row ${r} " +
@@ -145,15 +150,27 @@ class LuceneDAO(val location: String,
         }
       }
       indexWriter.commit()
+
       log.debug("Number of documents indexed in this partition: " + indexWriter.maxDoc())
-      indexWriter.close
+      indexWriter.close()
+      directory.close()
+
+      //Remove the lock for Solr HDFS/Local Uploads, Windows will handle / differently
+      val lockFile = new File(shuffleIndexFile + File.separator + IndexWriter.WRITE_LOCK_NAME)
+
+      if (!lockFile.delete()) {
+        log.error(s"Error deleting lock file after index writer is closed ${lockFile.getAbsolutePath()}")
+      }
+
       val conf = new Configuration
-      val partitionLocation = indexPath + "/" + SUFFIX + i
+      // TODO: Use Java FileSystem API to clean up "/" hardcoding
+      val fs = FileSystem.get(conf)
+      val partitionLocation = indicesPath + "/" + SUFFIX + i + "/" + INDEX_PREFIX
 
       val dstPath = new HadoopPath(partitionLocation)
       val srcPath = new HadoopPath(shuffleIndexPath.toString)
 
-      FileSystem.get(conf).copyFromLocalFile(true, srcPath, dstPath)
+      fs.copyFromLocalFile(true, srcPath, dstPath)
       log.info(s"Copied indices from ${srcPath.toString} to deep storage ${dstPath.toString}")
 
       if (shuffleIndexFile.exists() && !shuffleIndexFile.delete()) {
@@ -179,7 +196,7 @@ class LuceneDAO(val location: String,
   @transient private var _shards: RDD[LuceneShard] = _
 
   def load(sc: SparkContext): Unit = {
-    val indexPath = location.stripSuffix("/") + "/" + INDEX_PREFIX
+    val indexPath = location.stripSuffix("/") + "/" + INDICES_PREFIX
     val dictionaryPath = location.stripSuffix("/") + "/" + DICTIONARY_PREFIX
     val schemaPath = location.stripSuffix("/") + "/" + SCHEMA_PREFIX
 
@@ -207,7 +224,7 @@ class LuceneDAO(val location: String,
         val localDir = new File(DalUtils.getLocalDir(sparkConf))
         log.info(s"Created ${localDir} to write lucene shuffle")
 
-        val hdfsPath = indexPath + "/" + SUFFIX + index
+        val hdfsPath = indexPath + "/" + SUFFIX + index + "/" + INDEX_PREFIX
         // Open a directory on Standalone/YARN/Mesos disk cache
         val shuffleIndexFile = DalUtils.getTempFile(PREFIX, localDir)
         val shuffleIndexPath = shuffleIndexFile.toPath
