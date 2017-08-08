@@ -28,6 +28,7 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
   }
 
   override def afterAll(): Unit = {
+    cleanup()
     super.afterAll()
   }
 
@@ -93,7 +94,6 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
 
     dao.index(vectorized, indexTime)
 
-    /*
     dao.load(sc)
 
     val rdd1 = dao.search("tld:google.com", Seq("user", "svisits"), 1.0)
@@ -106,7 +106,6 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
     val rdd3 = dao.search("appname:instagram", Seq("user", "visits"), 1.0)
     assert(rdd3.count() == 1)
     assert(rdd3.collect()(0) == Row.apply("123", 8))
-    */
   }
 
   test("index test") {
