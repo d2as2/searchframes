@@ -1,6 +1,5 @@
 package com.verizon.bda.trapezium.dal.solr
 
-import com.typesafe.config.Config
 import org.apache.log4j.Logger
 import org.apache.solr.client.solrj.request.CollectionAdminRequest
 import org.apache.solr.client.solrj.response.CollectionAdminResponse
@@ -11,9 +10,13 @@ import scalaj.http.{Http, HttpResponse}
 /**
   * Created by venkatesh on 7/12/17.
   */
-class SolrOpsLocal(config: Config, map: Map[String, ListBuffer[String]]) extends SolrOps(config){
+class SolrOpsLocal(solrMap: Map[String, String]) extends SolrOps(solrMap: Map[String, String]) {
 
   override lazy val log = Logger.getLogger(classOf[SolrOpsLocal])
+  lazy val movingDirectory = solrMap("storageDir") + collectionName
+  lazy val map: Map[String, ListBuffer[String]] = CollectIndices.
+    moveFilesFromHdfsToLocal(solrMap, getSolrNodes,
+      indexFilePath, movingDirectory)
 
   def createCollection(): Unit = {
     val solrConfigName = configName
@@ -38,7 +41,7 @@ class SolrOpsLocal(config: Config, map: Map[String, ListBuffer[String]]) extends
 
     for ((host, fileList) <- map) {
       for (directory <- fileList.toList) {
-        val id = directory.split("-").last.toInt+1
+        val id = directory.split("-").last.toInt + 1
 
         val coreName = s"${collectionName}_shard${id}_replica1"
         val solrServerUrl = ("http://" + host + ":8983/solr/admin/cores")
@@ -53,28 +56,17 @@ class SolrOpsLocal(config: Config, map: Map[String, ListBuffer[String]]) extends
             .param("collection", collectionName)
             .param("shard", s"shard${i}")
             .param("collection.configName", configName)
-            .param("numshard", s"$id" )
+            .param("numshard", s"$id")
             .asString
 
           retry = retry + 1
-        } while (reponse.is2xx && retry < 3)
+        } while (!reponse.is2xx && retry < 3)
         i = i + 1
-        log.info(s"body:${reponse.body} \nresponse status:${reponse.statusLine} \nadditional${reponse.headers("status")} ")
+        log.info(s"body:${reponse.body} \nresponse status:${reponse.statusLine} " +
+          s"\nadditional${reponse.headers("status")} ")
       }
     }
   }
-
-
-
-//  def reloadCollection(aliasedCollection: String): Unit = {
-//    val req = new CollectionAdminRequest.Reload
-//    req.setCollectionName(aliasedCollection)
-//    req.process(cloudClient)
-//  }
-
-
-
-
 
 
 }

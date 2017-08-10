@@ -4,14 +4,12 @@ import java.io.InputStream
 import java.net.URI
 
 import com.jcraft.jsch.{ChannelExec, JSch, Session}
-import com.typesafe.config.Config
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, FileUtil, Path}
 import org.apache.log4j.Logger
-import org.joda.time.LocalDate
 
-import scala.collection.JavaConverters._
 import scala.collection.mutable.{ListBuffer, ArrayBuffer => MArray, Map => MMap}
+import scala.collection.parallel.ForkJoinTaskSupport
 import scala.collection.parallel.mutable.ParArray
 
 /**
@@ -28,6 +26,7 @@ class CollectIndices {
     session.setConfig("StrictHostKeyChecking", "no")
     session.setPassword(password)
     session.setTimeout(10000)
+    log.info(s"making ssh session with ${user}@${host}")
     session.connect()
   }
 
@@ -83,47 +82,53 @@ class CollectIndices {
 object CollectIndices {
   val log = Logger.getLogger(classOf[CollectIndices])
 
-  def moveFilesFromHdfsToLocal(config: Config): Map[String, ListBuffer[String]] = {
-    var map = MMap[String, ListBuffer[String]]()
-    //    val map = new ConcurrentHashMap[String, ListBuffer[String]]
-    val solrNodeHosts = config.getStringList("solrNodeHosts").asScala
-    val solrNodeUser = config.getString("user")
-    val solrNodePassword = config.getString("solrNodePassword")
+  def moveFilesFromHdfsToLocal(solrMap: Map[String, String], solrNodeHosts: List[String],
+                               indexFilePath: String,
+                               movingDirectory: String): Map[String, ListBuffer[String]] = {
+    val solrNodes1 = solrNodeHosts
+    val solrNodeUser = solrMap("solrUser")
+    val solrNodePassword = solrMap("solrNodePassword")
     val solrNodes = new ListBuffer[CollectIndices]
-    val localDate = new LocalDate().toString("YYYY_MM_dd")
-    val parentDataDir = config.getString("parentDataDir")
-    val directory = s"${parentDataDir}_${localDate}"
-    for (host <- solrNodeHosts) {
+    for (host <- solrNodes1) {
       val scpHost = new CollectIndices
       scpHost.initSession(host, solrNodeUser, solrNodePassword)
-      val command = s"mkdir ${directory}"
+      val command = s"mkdir ${movingDirectory}"
       scpHost.runCommand(command, false)
       solrNodes.append(scpHost)
     }
-    val arr = getHdfsList(config)
+    val arr = getHdfsList(solrMap, indexFilePath)
     //    val atmic = new AtomicInteger(0)
     var count = 0
-
-    import scala.collection.parallel._
-    val pc: Array[(CollectIndices, String, String)] = arr.map(file => {
+    val sshSequence: Array[(CollectIndices, String, String)] = arr.map(file => {
       val fileName = file.split("/").last
       val machine: CollectIndices = solrNodes(count)
 
 
-      var command = s"hdfs dfs -copyToLocal $file ${directory};" +
-        s"mkdir ${directory}/$fileName/index;" +
-        s"mv  ${directory}/$fileName/[^index]*  ${directory}/$fileName/index/.;" +
-        s"rm  ${directory}/$fileName/index/*.lock;chmod 777 -R ${directory};"
+      var command = s"hdfs dfs -copyToLocal $file ${movingDirectory};" +
+        s"mkdir ${movingDirectory}/$fileName/index;" +
+        s"mv  ${movingDirectory}/$fileName/[^index]*  ${movingDirectory}/$fileName/index/.;" +
+        s"rm  ${movingDirectory}/$fileName/index/*.lock;chmod 777 -R ${movingDirectory};"
       count = (count + 1) % solrNodeHosts.size
       (machine, command, fileName)
     })
-    val pc1: ParArray[(CollectIndices, String, String)] = mutable.ParArray.createFromCopy(pc)
+
+    val fileMap = parallelSshFire(sshSequence, movingDirectory)
+    solrNodes.foreach(_.disconnectSession())
+    log.info(s"map prepared was " + fileMap.toMap)
+    return fileMap.toMap[String, ListBuffer[String]]
+  }
+
+  def parallelSshFire(sshSequence: Array[(CollectIndices, String, String)],
+                      directory: String): MMap[String, ListBuffer[String]] = {
+    var map = MMap[String, ListBuffer[String]]()
+
+    val pc1: ParArray[(CollectIndices, String, String)] = ParArray.createFromCopy(sshSequence)
 
     pc1.tasksupport = new ForkJoinTaskSupport(new scala.concurrent.forkjoin.ForkJoinPool(20))
     pc1.map(p => {
       p._1.runCommand(p._2, true)
     })
-    for ((i, j, k) <- pc) {
+    for ((i, j, k) <- sshSequence) {
       val host = i.session.getHost
       val fileName = k
       if (map.contains(host)) {
@@ -133,26 +138,22 @@ object CollectIndices {
         map(host).append(s"${directory}/$fileName")
       }
     }
-
-    solrNodes.foreach(_.disconnectSession())
-    log.info(s"map prepared was " + map.toMap)
-    return map.toMap[String, ListBuffer[String]]
+    map
   }
 
-  def getHdfsList(config: Config): Array[String] = {
+  def getHdfsList(solrMap: Map[String, String], indexFilePath: String): Array[String] = {
     val configuration: Configuration = new Configuration()
     configuration.set("fs.hdfs.impl", classOf[org.apache.hadoop.hdfs.DistributedFileSystem].getName)
     // 2. Get the instance of the HDFS
-    val nameNaode = config.getString("nameNode")
+    val nameNaode = solrMap("nameNode")
     // + config.getString("indexFilesPath")
     // config.getString("hdfs")
     val hdfs = FileSystem.get(new URI(s"hdfs://${nameNaode}"), configuration)
     // 3. Get the metadata of the desired directory
-    val indexFilesPath = config.getString("indexFilesPath")
-    val fileStatus = hdfs.listStatus(new Path(s"hdfs://${nameNaode}" + indexFilesPath))
+    val fileStatus = hdfs.listStatus(new Path(s"hdfs://${nameNaode}" + indexFilePath))
     // 4. Using FileUtil, getting the Paths for all the FileStatus
     val paths = FileUtil.stat2Paths(fileStatus)
-    val folderPrefix = config.getString("folderPrefix")
+    val folderPrefix = solrMap("folderPrefix")
     paths.map(_.toString).filter(p => p.contains(folderPrefix))
   }
 }

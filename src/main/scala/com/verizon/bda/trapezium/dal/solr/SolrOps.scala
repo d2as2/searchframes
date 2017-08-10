@@ -1,34 +1,40 @@
 package com.verizon.bda.trapezium.dal.solr
 
 import java.nio.file.{Path, Paths}
-import java.util
+import java.sql.Time
 
-import com.typesafe.config.Config
 import org.apache.log4j.Logger
 import org.apache.solr.client.solrj.impl.CloudSolrClient
 import org.apache.solr.client.solrj.request.CollectionAdminRequest
-import org.joda.time.LocalDate
 
+import scala.collection.JavaConverters._
 import scalaj.http.{Http, HttpResponse}
 
 /**
   * Created by venkatesh on 8/3/17.
   */
-abstract class SolrOps(config: Config) {
+abstract class SolrOps(solrMap: Map[String, String]) {
 
   val cloudClient: CloudSolrClient = getSolrclient()
   lazy val log = Logger.getLogger(classOf[SolrOpsHdfs])
-  val localDate = new LocalDate().toString("YYYY_MM_dd")
-  val appName = config.getString("appName")
-  val collectionPrefix = config.getString("collection_prefix")
-  val aliasCollectionName = config.getString("aliasName")
-  lazy val collectionName = s"${collectionPrefix}_${localDate}"
-  val part0isPresent = false
-  val configName = s"$appName/${aliasCollectionName}"
+  val appName = solrMap("appName")
+  var aliasCollectionName: String = null
+  var collectionName: String = null
+  lazy val configName = s"$appName/${aliasCollectionName}"
+  lazy val zkHosts = solrMap("zkHosts").split(",").toList.asJava
+  var indexFilePath: String = null
+
+  def getSolrNodes: List[String] = {
+    cloudClient.getZkStateReader
+      .getClusterState
+      .getLiveNodes
+      .asScala.toList
+      .map(p => p.split("_")(0))
+      .map(p => p.split(":")(0))
+  }
 
   def getSolrclient(): CloudSolrClient = {
-    val zkHosts = config.getStringList("zkHosts")
-    val chroot = config.getString("zroot")
+    val chroot = solrMap("zroot")
     val cloudSolrClient: CloudSolrClient = new CloudSolrClient(zkHosts, chroot)
     cloudSolrClient
   }
@@ -50,14 +56,10 @@ abstract class SolrOps(config: Config) {
   }
 
   def upload(): Unit = {
-    val zkHosts: util.List[String] = config.getStringList("zkHosts")
     val solrClient = cloudClient
-    val appName = config.getString("appName")
-    val path: Path = Paths.get(config.getString("solrConfig"))
-
+    val path: Path = Paths.get(solrMap("solrConfig"))
     log.info(s"uploading to ${configName} from path:${path.toString}")
     solrClient.uploadConfig(path, configName)
-
     log.info("uploaded the config successfully ")
   }
 
@@ -69,7 +71,39 @@ abstract class SolrOps(config: Config) {
     log.info(response.getResponse.asMap(5).toString)
   }
 
+  def deleteCollection(host: String, collectionName: String): Unit = {
+    val solrServerUrl = "http://" + host + ":8983/solr/admin/collections"
+    val url = Http(solrServerUrl).timeout(connTimeoutMs = 20000, readTimeoutMs = 50000)
+    log.info(s"deleting collection${collectionName} if exists")
+    val response1: scalaj.http.HttpResponse[String] = url.param("name", collectionName)
+      .param("action", "DELETE").asString
+    log.info(s"deleting collection response ${response1.body}")
+  }
+
   def createCollection(): Unit
 
   def createCores(): Unit
+
+  def makeSolrCollection(aliasName: String, hdfsPath: String, workflowTime: Time): Unit = {
+    this.aliasCollectionName = aliasName
+    this.indexFilePath = hdfsPath
+    collectionName = s"${aliasCollectionName}_${workflowTime.getTime.toString}"
+
+    upload()
+    createCollection()
+    createCores()
+    aliasCollection()
+  }
+}
+
+object SolrOps {
+  def apply(mode: String,
+            params: Map[String, String]): SolrOps = {
+    mode.toUpperCase() match {
+      case "HDFS" => new SolrOpsHdfs(params)
+      case "LOCAL" => new SolrOpsLocal(params)
+    }
+  }
+
+
 }
