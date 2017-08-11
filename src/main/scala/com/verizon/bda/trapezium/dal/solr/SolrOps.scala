@@ -41,8 +41,7 @@ abstract class SolrOps(solrMap: Map[String, String]) {
 
   def unloadCore(node: String, coreName: String): Boolean = {
     log.info("unloading core")
-    val port = solrMap("solrPort")
-    val solrServerUrl = "http://" + node + s":${port}/solr/admin/cores"
+    val solrServerUrl = "http://" + node + s"/solr/admin/cores"
     val url = Http(solrServerUrl)
     val response: HttpResponse[String] = url.param("action", "UNLOAD")
       .param("core", coreName)
@@ -80,9 +79,10 @@ abstract class SolrOps(solrMap: Map[String, String]) {
   def deleteCollection(collectionName: String): Unit = {
     val solrServerUrl = getSolrCollectionurl()
     val url = Http(solrServerUrl).timeout(connTimeoutMs = 20000, readTimeoutMs = 50000)
-    log.info(s"deleting collection${collectionName} if exists")
+    log.info(s"deleting collection ${collectionName} if exists using ${url}")
     val response1: scalaj.http.HttpResponse[String] = url.param("name", collectionName)
       .param("action", "DELETE").asString
+
     log.info(s"deleting collection response ${response1.body}")
   }
 
@@ -142,8 +142,10 @@ abstract class SolrOps(solrMap: Map[String, String]) {
 }
 
 object SolrOps {
+  lazy val log = Logger.getLogger(classOf[SolrOpsHdfs])
   def apply(mode: String,
             params: Map[String, String]): SolrOps = {
+    log.info(s"creating solr collection in ${mode} with ${params}")
     mode.toUpperCase() match {
       case "HDFS" => {
         val set = Set("appName", "zkHosts", "nameNode", "zroot", "storageDir",
