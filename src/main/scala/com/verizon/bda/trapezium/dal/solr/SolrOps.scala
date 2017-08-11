@@ -122,6 +122,7 @@ abstract class SolrOps(solrMap: Map[String, String]) {
     coreMap = (coreNames, ips).zipped.toMap
     for ((corename, ip) <- coreMap) {
       log.info(s"coreName:  ${corename} ip ${ip}")
+      unloadCore(ip, corename)
     }
     log.info(coreMap)
 
@@ -142,10 +143,9 @@ abstract class SolrOps(solrMap: Map[String, String]) {
 }
 
 object SolrOps {
-  lazy val log = Logger.getLogger(classOf[SolrOpsHdfs])
   def apply(mode: String,
             params: Map[String, String]): SolrOps = {
-    log.info(s"creating solr collection in ${mode} with ${params}")
+    println(params)
     mode.toUpperCase() match {
       case "HDFS" => {
         val set = Set("appName", "zkHosts", "nameNode", "zroot", "storageDir",
@@ -158,7 +158,7 @@ object SolrOps {
       }
       case "LOCAL" => {
         val set = Set("appName", "zkHosts", "nameNode", "solrNodePassword", "solrUser",
-          "folderPrefix", "zroot", "storageDir", "solrConfig", "solrPort")
+          "folderPrefix", "zroot", "storageDir", "solrConfig", "solrPort","numShards", "replicationFactor")
         set.foreach(p =>
           if (!params.contains(p)) {
             throw new SolrOpsException(s"Map Doesn't have ${p} map should contain ${set}")

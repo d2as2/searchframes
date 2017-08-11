@@ -85,6 +85,7 @@ object CollectIndices {
   def moveFilesFromHdfsToLocal(solrMap: Map[String, String], solrNodeHosts: List[String],
                                indexFilePath: String,
                                movingDirectory: String): Map[String, ListBuffer[String]] = {
+    log.info("inside move files")
     val solrNodes1 = solrNodeHosts
     val solrNodeUser = solrMap("solrUser")
     val solrNodePassword = solrMap("solrNodePassword")
@@ -105,9 +106,8 @@ object CollectIndices {
 
 
       var command = s"hdfs dfs -copyToLocal $file ${movingDirectory};" +
-        s"mkdir ${movingDirectory}/$fileName/index;" +
-        s"mv  ${movingDirectory}/$fileName/[^index]*  ${movingDirectory}/$fileName/index/.;" +
-        s"rm  ${movingDirectory}/$fileName/index/*.lock;chmod 777 -R ${movingDirectory};"
+        s"mkdir ${movingDirectory}/$fileName;" +
+        s"chmod 777 -R ${movingDirectory};"
       count = (count + 1) % solrNodeHosts.size
       (machine, command, fileName)
     })
@@ -142,10 +142,13 @@ object CollectIndices {
   }
 
   def getHdfsList(solrMap: Map[String, String], indexFilePath: String): Array[String] = {
+
     val configuration: Configuration = new Configuration()
     configuration.set("fs.hdfs.impl", classOf[org.apache.hadoop.hdfs.DistributedFileSystem].getName)
     // 2. Get the instance of the HDFS
+
     val nameNaode = solrMap("nameNode")
+    log.info(s"inside fetchin hdfs list from hdfs://${nameNaode}${indexFilePath}")
     // + config.getString("indexFilesPath")
     // config.getString("hdfs")
     val hdfs = FileSystem.get(new URI(s"hdfs://${nameNaode}"), configuration)

@@ -19,7 +19,7 @@ class SolrOpsLocal(solrMap: Map[String, String]) extends SolrOps(solrMap: Map[St
 
   def createCores(): Unit = {
     var i = 1
-
+    log.info("inside create cores")
     for ((host, fileList) <- map) {
       for (directory <- fileList.toList) {
         val id = directory.split("-").last.toInt + 1
