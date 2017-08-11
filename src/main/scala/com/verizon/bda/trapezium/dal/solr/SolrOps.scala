@@ -4,10 +4,10 @@ import java.nio.file.{Path, Paths}
 import java.sql.Time
 
 import org.apache.log4j.Logger
-import org.apache.solr.client.solrj.impl.CloudSolrClient
-import org.apache.solr.client.solrj.request.CollectionAdminRequest
+import org.apache.solr.client.solrj.impl.ZkClientClusterStateProvider
 
 import scala.collection.JavaConverters._
+import scala.xml.XML
 import scalaj.http.{Http, HttpResponse}
 
 /**
@@ -15,7 +15,7 @@ import scalaj.http.{Http, HttpResponse}
   */
 abstract class SolrOps(solrMap: Map[String, String]) {
 
-  val cloudClient: CloudSolrClient = getSolrclient()
+  val cloudClient: ZkClientClusterStateProvider = getSolrclient()
   lazy val log = Logger.getLogger(classOf[SolrOpsHdfs])
   val appName = solrMap("appName")
   var aliasCollectionName: String = null
@@ -23,30 +23,26 @@ abstract class SolrOps(solrMap: Map[String, String]) {
   lazy val configName = s"$appName/${aliasCollectionName}"
   lazy val zkHosts = solrMap("zkHosts").split(",").toList.asJava
   var indexFilePath: String = null
+  var coreMap: Map[String, String] = null
 
   def getSolrNodes: List[String] = {
-    cloudClient.getZkStateReader
-      .getClusterState
-      .getLiveNodes
+    cloudClient.liveNodes()
       .asScala.toList
       .map(p => p.split("_")(0))
       .map(p => p.split(":")(0))
   }
 
-  def getSolrclient(): CloudSolrClient = {
+  def getSolrclient(): ZkClientClusterStateProvider = {
     val chroot = solrMap("zroot")
-    val cloudSolrClient: CloudSolrClient = new CloudSolrClient(zkHosts, chroot)
-    cloudSolrClient
+    new ZkClientClusterStateProvider(zkHosts, chroot)
+
+
   }
 
   def unloadCore(node: String, coreName: String): Boolean = {
     log.info("unloading core")
-    val solrServerUrl = if (node.contains("8983")) {
-      "http://" + node + "/solr/admin/cores"
-    }
-    else {
-      "http://" + node + ":8983/solr/admin/cores"
-    }
+    val port = solrMap("solrPort")
+    val solrServerUrl = "http://" + node + s":${port}/solr/admin/cores"
     val url = Http(solrServerUrl)
     val response: HttpResponse[String] = url.param("action", "UNLOAD")
       .param("core", coreName)
@@ -63,16 +59,26 @@ abstract class SolrOps(solrMap: Map[String, String]) {
     log.info("uploaded the config successfully ")
   }
 
-  def aliasCollection(): Unit = {
-    val coreCreate = new CollectionAdminRequest.CreateAlias
-    coreCreate.setAliasedCollections(collectionName)
-    coreCreate.setAliasName(aliasCollectionName)
-    val response = coreCreate.process(cloudClient)
-    log.info(response.getResponse.asMap(5).toString)
+  def getSolrCollectionurl(): String = {
+    val host = getSolrNodes.head
+    val port = solrMap("solrPort")
+    val solrServerUrl = "http://" + host + s":${port}/solr/admin/collections"
+    solrServerUrl
   }
 
-  def deleteCollection(host: String, collectionName: String): Unit = {
-    val solrServerUrl = "http://" + host + ":8983/solr/admin/collections"
+  def aliasCollection(): Unit = {
+    val solrServerUrl = getSolrCollectionurl()
+    val url = Http(solrServerUrl).timeout(connTimeoutMs = 20000, readTimeoutMs = 50000)
+    log.info(s"aliasing collection  ${collectionName} with ${aliasCollectionName}")
+    val response: scalaj.http.HttpResponse[String] = url.param("collections", collectionName)
+      .param("name", aliasCollectionName)
+      .param("action", "CREATEALIAS").asString
+    log.info(s"aliasing collection response ${response.body}")
+
+  }
+
+  def deleteCollection(collectionName: String): Unit = {
+    val solrServerUrl = getSolrCollectionurl()
     val url = Http(solrServerUrl).timeout(connTimeoutMs = 20000, readTimeoutMs = 50000)
     log.info(s"deleting collection${collectionName} if exists")
     val response1: scalaj.http.HttpResponse[String] = url.param("name", collectionName)
@@ -80,7 +86,46 @@ abstract class SolrOps(solrMap: Map[String, String]) {
     log.info(s"deleting collection response ${response1.body}")
   }
 
-  def createCollection(): Unit
+  def createCollection(): Unit = {
+    val solrServerUrl = getSolrCollectionurl
+    val url = Http(solrServerUrl).timeout(connTimeoutMs = 20000, readTimeoutMs = 50000)
+    deleteCollection(collectionName)
+    log.info(s"creating collection : ${collectionName} ")
+
+    val nodeCount = getSolrNodes.size
+    val numShards = solrMap("numShards")
+    val replicationFactor = solrMap("replicationFactor")
+    val maxShardsPerNode = (numShards.toInt * replicationFactor.toInt) / nodeCount + 1
+    val url1 = url.param("action", "CREATE")
+      .param("name", collectionName)
+      .param("numShards", numShards)
+      .param("replicationFactor", replicationFactor)
+      .param("maxShardsPerNode", maxShardsPerNode.toString)
+      .param("collection.configName", configName)
+      .param("router.name", "compositeId")
+    log.info(s"created url${url1}")
+    val response: scalaj.http.HttpResponse[String] = url1.asString
+
+    log.info(s"creating collection response ${response.body}")
+
+    val xmlBody = XML.loadString(response.body)
+    // check for response status (should be 0)
+    val ips = (xmlBody \\ "lst").map(p => p \ "@name")
+      .map(_.text.split("_")(0))
+      .filter(p => p != "responseHeader" && p != "success")
+
+    //    val map = ((xmlBody \\ "lst" \\ "int" \\ "@name").
+    //              map(_.text), (xmlBody \\ "lst" \\ "int").
+    //              map(_.text)).zipped.filter((k, v) => k == "status")
+
+    val coreNames = (xmlBody \\ "str").map(p => p.text)
+    coreMap = (coreNames, ips).zipped.toMap
+    for ((corename, ip) <- coreMap) {
+      log.info(s"coreName:  ${corename} ip ${ip}")
+    }
+    log.info(coreMap)
+
+  }
 
   def createCores(): Unit
 
@@ -100,8 +145,24 @@ object SolrOps {
   def apply(mode: String,
             params: Map[String, String]): SolrOps = {
     mode.toUpperCase() match {
-      case "HDFS" => new SolrOpsHdfs(params)
-      case "LOCAL" => new SolrOpsLocal(params)
+      case "HDFS" => {
+        val set = Set("appName", "zkHosts", "nameNode", "zroot", "storageDir",
+          "solrConfig", "numShards", "replicationFactor", "solrPort")
+        set.foreach(p =>
+          if (!params.contains(p)) {
+            throw new SolrOpsException(s"Map Doesn't have ${p} map should contain ${set}")
+          })
+        new SolrOpsHdfs(params)
+      }
+      case "LOCAL" => {
+        val set = Set("appName", "zkHosts", "nameNode", "solrNodePassword", "solrUser",
+          "folderPrefix", "zroot", "storageDir", "solrConfig", "solrPort")
+        set.foreach(p =>
+          if (!params.contains(p)) {
+            throw new SolrOpsException(s"Map Doesn't have ${p} map should contain ${set}")
+          })
+        new SolrOpsLocal(params)
+      }
     }
   }
 

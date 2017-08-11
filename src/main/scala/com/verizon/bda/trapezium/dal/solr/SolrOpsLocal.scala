@@ -1,8 +1,6 @@
 package com.verizon.bda.trapezium.dal.solr
 
 import org.apache.log4j.Logger
-import org.apache.solr.client.solrj.request.CollectionAdminRequest
-import org.apache.solr.client.solrj.response.CollectionAdminResponse
 
 import scala.collection.mutable.ListBuffer
 import scalaj.http.{Http, HttpResponse}
@@ -18,23 +16,6 @@ class SolrOpsLocal(solrMap: Map[String, String]) extends SolrOps(solrMap: Map[St
     moveFilesFromHdfsToLocal(solrMap, getSolrNodes,
       indexFilePath, movingDirectory)
 
-  def createCollection(): Unit = {
-    val solrConfigName = configName
-    val req = new CollectionAdminRequest.Create()
-    log.info(s"creating collection : ${collectionName} with shards per")
-    val response: CollectionAdminResponse = req.setCollectionName(collectionName)
-      .setReplicationFactor(1)
-      .setNumShards(1)
-      .setConfigName(solrConfigName)
-      .process(cloudClient)
-
-    log.info(s"created collection :${collectionName} "
-      + response.getResponse.asMap(5).toString)
-    for (host <- map.keySet) {
-      val coreName = s"${collectionName}_shard1_replica1"
-      unloadCore(host, coreName)
-    }
-  }
 
   def createCores(): Unit = {
     var i = 1
@@ -42,9 +23,9 @@ class SolrOpsLocal(solrMap: Map[String, String]) extends SolrOps(solrMap: Map[St
     for ((host, fileList) <- map) {
       for (directory <- fileList.toList) {
         val id = directory.split("-").last.toInt + 1
-
+        val port = solrMap("solrPort")
         val coreName = s"${collectionName}_shard${id}_replica1"
-        val solrServerUrl = ("http://" + host + ":8983/solr/admin/cores")
+        val solrServerUrl = ("http://" + host + s":${port}/solr/admin/cores")
         val url = Http(solrServerUrl)
         var reponse: HttpResponse[String] = null
         var retry = 0
