@@ -3,9 +3,7 @@ package com.verizon.bda.trapezium.dal.solr
 import org.apache.http.client.methods.HttpGet
 import org.apache.http.impl.client.HttpClientBuilder
 import org.apache.log4j.Logger
-
 import scala.collection.mutable.ListBuffer
-
 
 /**
   * Created by venkatesh on 8/3/17.
@@ -13,17 +11,12 @@ import scala.collection.mutable.ListBuffer
 class SolrOpsHdfs(solrMap: Map[String, String]) extends SolrOps(solrMap: Map[String, String]) {
   override lazy val log = Logger.getLogger(classOf[SolrOpsHdfs])
 
-
-
   override def createCores(): Unit = {
-    //    var reponse: HttpResponse[String] = null
     val nameNode = solrMap("nameNode")
     val hdfsHome = s"hdfs://${nameNode}"
     log.info("creating cores")
     val list = new ListBuffer[String]
     for ((coreName, host) <- coreMap) {
-      val client = HttpClientBuilder.create().build()
-
       unloadCore(host, coreName)
 
       val tmp = coreName.split("_")
@@ -46,7 +39,6 @@ class SolrOpsHdfs(solrMap: Map[String, String]) extends SolrOps(solrMap: Map[Str
   def makCoreCreation(list: List[String]): Unit = {
     list.foreach(url => {
       val client = HttpClientBuilder.create().build()
-//      println(url)
       val request = new HttpGet(url)
       // check for response status (should be 0)
 

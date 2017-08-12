@@ -2,10 +2,9 @@ package com.verizon.bda.trapezium.dal.solr
 
 import java.nio.file.{Path, Paths}
 import java.sql.Time
-
+import com.verizon.bda.trapezium.dal.exceptions.SolrOpsException
 import org.apache.log4j.Logger
 import org.apache.solr.client.solrj.impl.ZkClientClusterStateProvider
-
 import scala.collection.JavaConverters._
 import scala.xml.XML
 import scalaj.http.{Http, HttpResponse}
@@ -114,10 +113,6 @@ abstract class SolrOps(solrMap: Map[String, String]) {
       .map(_.text.split("_")(0))
       .filter(p => p != "responseHeader" && p != "success")
 
-    //    val map = ((xmlBody \\ "lst" \\ "int" \\ "@name").
-    //              map(_.text), (xmlBody \\ "lst" \\ "int").
-    //              map(_.text)).zipped.filter((k, v) => k == "status")
-
     val coreNames = (xmlBody \\ "str").map(p => p.text)
     coreMap = (coreNames, ips).zipped.toMap
     for ((corename, ip) <- coreMap) {
@@ -145,7 +140,6 @@ abstract class SolrOps(solrMap: Map[String, String]) {
 object SolrOps {
   def apply(mode: String,
             params: Map[String, String]): SolrOps = {
-    println(params)
     mode.toUpperCase() match {
       case "HDFS" => {
         val set = Set("appName", "zkHosts", "nameNode", "zroot", "storageDir",
