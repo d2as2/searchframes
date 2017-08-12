@@ -93,6 +93,7 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
     assert(result2 == Seq("verizon.com", "google.com"))
 
     dao.index(vectorized, indexTime)
+
     dao.load(sc)
 
     val rdd1 = dao.search("tld:google.com", Seq("user", "svisits"), 1.0)
