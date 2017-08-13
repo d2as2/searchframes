@@ -1,7 +1,6 @@
 package com.verizon.bda.trapezium.dal.solr
 
 import org.apache.log4j.Logger
-
 import scala.collection.mutable.ListBuffer
 import scalaj.http.{Http, HttpResponse}
 

@@ -2,13 +2,11 @@ package com.verizon.bda.trapezium.dal.solr
 
 import java.io.InputStream
 import java.net.URI
-
 import com.jcraft.jsch.{ChannelExec, JSch, Session}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, FileUtil, Path}
 import org.apache.log4j.Logger
-
-import scala.collection.mutable.{ListBuffer, ArrayBuffer => MArray, Map => MMap}
+import scala.collection.mutable.{ListBuffer, Map => MMap}
 import scala.collection.parallel.ForkJoinTaskSupport
 import scala.collection.parallel.mutable.ParArray
 
