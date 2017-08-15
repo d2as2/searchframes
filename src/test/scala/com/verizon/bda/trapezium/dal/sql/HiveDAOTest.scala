@@ -19,17 +19,11 @@ package com.verizon.bda.trapezium.dal.sql
 
 import org.apache.spark.mllib.util.MLlibTestSparkContext
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.DataFrame
-import org.apache.spark.sql.Row
-import org.apache.spark.sql.SQLContext
 import org.apache.spark.sql.catalyst.expressions.GenericRow
 import org.apache.spark.sql.hive.HiveContext
 import org.apache.spark.sql.hive.test.TestHiveContext
-import org.apache.spark.sql.types.IntegerType
-import org.apache.spark.sql.types.StringType
-import org.apache.spark.sql.types.StructField
-import org.apache.spark.sql.types.StructType
-import org.scalatest.Finders
+import org.apache.spark.sql.types.{IntegerType, StringType, StructField, StructType}
+import org.apache.spark.sql.{DataFrame, Row, SQLContext, SparkSession}
 import org.scalatest.FunSuite
 
 /**
@@ -41,8 +35,18 @@ class HiveDAOTest extends FunSuite with MLlibTestSparkContext {
 
   override def beforeAll() {
     super.beforeAll()
-    hiveContext = new TestHiveContext(sc)
-    hiveContext.setConf("hive.exec.dynamic.partition.mode", "nonstrict")
+
+//FIXME: Here TestHiveContext no longer exists
+//    hiveContext = new TestHiveContext(sc)
+
+//    hiveContext.setConf("hive.exec.dynamic.partition.mode", "nonstrict")
+
+    var sparkSession = SparkSession.builder.
+      master("local")
+      .appName("spark session example")
+      .enableHiveSupport()
+      .getOrCreate()
+
 
     val rdd: RDD[Row] = sc.parallelize(
       (1 to 10).map(x => new GenericRow(Array("a" + x, "b", x))).toList
