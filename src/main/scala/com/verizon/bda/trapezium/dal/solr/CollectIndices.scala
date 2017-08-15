@@ -2,10 +2,12 @@ package com.verizon.bda.trapezium.dal.solr
 
 import java.io.InputStream
 import java.net.URI
+
 import com.jcraft.jsch.{ChannelExec, JSch, Session}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, FileUtil, Path}
 import org.apache.log4j.Logger
+
 import scala.collection.mutable.{ListBuffer, Map => MMap}
 import scala.collection.parallel.ForkJoinTaskSupport
 import scala.collection.parallel.mutable.ParArray
@@ -25,6 +27,7 @@ class CollectIndices {
     session.setPassword(password)
     session.setTimeout(10000)
     log.info(s"making ssh session with ${user}@${host}")
+
     session.connect()
   }
 
@@ -34,12 +37,22 @@ class CollectIndices {
 
   def runCommand(command: String, retry: Boolean): Int = {
     var code = -1
+    var isRetry = false
     try {
       do {
-        val channel: ChannelExec = session.openChannel("exec").asInstanceOf[ChannelExec]
-        channel.setInputStream(null)
-        channel.setCommand(command)
-        channel.connect
+
+        var channel: ChannelExec = null
+
+        do {
+          if (!isRetry) {
+            Thread.sleep(20000)
+          }
+          channel = session.openChannel("exec").asInstanceOf[ChannelExec]
+          channel.setInputStream(null)
+          channel.setCommand(command)
+          channel.connect
+          isRetry = true
+        } while (!channel.isConnected || channel == null)
         log.info(s"running command : ${command} in ${session.getHost}" +
           s" with user ${session.getUserName}")
         val in: InputStream = channel.getInputStream
@@ -127,6 +140,7 @@ object CollectIndices {
       p._1.runCommand(p._2, true)
     })
     for ((i, j, k) <- sshSequence) {
+
       val host = i.session.getHost
       val fileName = k
       if (map.contains(host)) {

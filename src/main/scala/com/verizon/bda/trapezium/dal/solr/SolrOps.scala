@@ -2,9 +2,12 @@ package com.verizon.bda.trapezium.dal.solr
 
 import java.nio.file.{Path, Paths}
 import java.sql.Time
-import com.verizon.bda.trapezium.dal.exceptions.SolrOpsException
+
+import org.apache.http.client.methods.HttpGet
+import org.apache.http.impl.client.HttpClientBuilder
 import org.apache.log4j.Logger
 import org.apache.solr.client.solrj.impl.ZkClientClusterStateProvider
+
 import scala.collection.JavaConverters._
 import scala.xml.XML
 import scalaj.http.{Http, HttpResponse}
@@ -135,6 +138,22 @@ abstract class SolrOps(solrMap: Map[String, String]) {
     createCores()
     aliasCollection()
   }
+
+  def makCoreCreation(list: List[String]): Unit = {
+    list.foreach(url => {
+      val client = HttpClientBuilder.create().build()
+      val request = new HttpGet(url)
+      // check for response status (should be 0)
+      log.info(s"url fired ${url}")
+      val response = client.execute(request)
+      log.info(s"response: ${response} ")
+      log.info(s"response status: ${response.getStatusLine} ")
+
+      client.close()
+      response.close()
+
+    })
+  }
 }
 
 object SolrOps {
@@ -152,7 +171,7 @@ object SolrOps {
       }
       case "LOCAL" => {
         val set = Set("appName", "zkHosts", "nameNode", "solrNodePassword", "solrUser",
-          "folderPrefix", "zroot", "storageDir", "solrConfig", "solrPort","numShards", "replicationFactor")
+          "folderPrefix", "zroot", "storageDir", "solrConfig", "solrPort", "numShards", "replicationFactor")
         set.foreach(p =>
           if (!params.contains(p)) {
             throw new SolrOpsException(s"Map Doesn't have ${p} map should contain ${set}")
@@ -160,6 +179,7 @@ object SolrOps {
         new SolrOpsLocal(params)
       }
     }
+
   }
 
 

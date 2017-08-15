@@ -1,8 +1,7 @@
 package com.verizon.bda.trapezium.dal.solr
 
-import org.apache.http.client.methods.HttpGet
-import org.apache.http.impl.client.HttpClientBuilder
 import org.apache.log4j.Logger
+
 import scala.collection.mutable.ListBuffer
 
 /**
@@ -36,16 +35,5 @@ class SolrOpsHdfs(solrMap: Map[String, String]) extends SolrOps(solrMap: Map[Str
     makCoreCreation(list.toList)
   }
 
-  def makCoreCreation(list: List[String]): Unit = {
-    list.foreach(url => {
-      val client = HttpClientBuilder.create().build()
-      val request = new HttpGet(url)
-      // check for response status (should be 0)
 
-      val response = client.execute(request)
-      log.info(s"response: ${response} ")
-      client.close()
-      response.close()
-    })
-  }
 }
