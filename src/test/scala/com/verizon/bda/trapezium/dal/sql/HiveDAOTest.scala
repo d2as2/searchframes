@@ -24,12 +24,14 @@ import org.apache.spark.sql.hive.HiveContext
 import org.apache.spark.sql.hive.test.TestHiveContext
 import org.apache.spark.sql.types.{IntegerType, StringType, StructField, StructType}
 import org.apache.spark.sql.{DataFrame, Row, SQLContext, SparkSession}
-import org.scalatest.FunSuite
+import org.scalatest.{FunSuite, Ignore}
 
 /**
  * @author pramod.lakshminarasimha
- */
-class HiveDAOTest extends FunSuite with MLlibTestSparkContext {
+  *
+  *         The HIVE Dao module is going to removed soon
+  **/
+@Ignore class HiveDAOTest extends FunSuite with MLlibTestSparkContext {
   @transient implicit var hiveContext: HiveContext = _
   @transient var testdf: DataFrame = _
 
