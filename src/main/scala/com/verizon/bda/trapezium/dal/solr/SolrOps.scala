@@ -3,6 +3,7 @@ package com.verizon.bda.trapezium.dal.solr
 import java.nio.file.{Path, Paths}
 import java.sql.Time
 
+import com.verizon.bda.trapezium.dal.exceptions.SolrOpsException
 import org.apache.http.client.methods.HttpGet
 import org.apache.http.impl.client.HttpClientBuilder
 import org.apache.log4j.Logger
