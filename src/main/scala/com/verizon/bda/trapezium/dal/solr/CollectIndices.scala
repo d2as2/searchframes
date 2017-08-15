@@ -45,7 +45,7 @@ class CollectIndices {
 
         do {
           if (!isRetry) {
-            Thread.sleep(20000)
+            Thread.sleep(5000)
           }
           channel = session.openChannel("exec").asInstanceOf[ChannelExec]
           channel.setInputStream(null)
