@@ -1,5 +1,6 @@
 package com.verizon.bda.trapezium.dal.solr
 
+import java.io.File
 import java.nio.file.{Path, Paths}
 import java.sql.Time
 
@@ -47,9 +48,9 @@ abstract class SolrOps(solrMap: Map[String, String]) {
     val request = new HttpGet("http://" + node + s"/solr/admin/cores?action=UNLOAD&core=${coreName}")
     // check for response status (should be 0)
     val response = client.execute(request)
-    response.getStatusLine.getStatusCode==200
-//    log.info(s"response: ${response} ")
-//    log.info(s"response status: ${response.getStatusLine} ")
+    response.getStatusLine.getStatusCode == 200
+    //    log.info(s"response: ${response} ")
+    //    log.info(s"response status: ${response.getStatusLine} ")
   }
 
   def upload(): Unit = {
@@ -130,7 +131,11 @@ abstract class SolrOps(solrMap: Map[String, String]) {
 
   def makeSolrCollection(aliasName: String, hdfsPath: String, workflowTime: Time): Unit = {
     this.aliasCollectionName = aliasName
-    this.indexFilePath = hdfsPath
+    this.indexFilePath = if (hdfsPath.last == File.separator) {
+      hdfsPath.slice(0, hdfsPath.length - 1)
+    } else {
+      hdfsPath
+    }
     collectionName = s"${aliasCollectionName}_${workflowTime.getTime.toString}"
 
     upload()

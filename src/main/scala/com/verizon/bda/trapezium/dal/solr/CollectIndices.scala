@@ -115,7 +115,12 @@ object CollectIndices {
     val sshSequence: Array[(CollectIndices, String, String, String)] = shards.map(shard => {
       log.info(s"shard ${shard}")
       val tmp = shard.split("_")
-      val partFile = solrMap("folderPrefix") + (tmp(tmp.length - 2).substring(5).toInt - 1)
+      val folderPrefix = if (solrMap("folderPrefix").charAt(0) == '/') {
+        solrMap("folderPrefix")
+      } else {
+        "/" + solrMap("folderPrefix")
+      }
+      val partFile = folderPrefix + (tmp(tmp.length - 2).substring(5).toInt - 1)
       log.info(s"partFile ${partFile}")
       val file = indexFilePath + partFile
       val machine: CollectIndices = getMachine(coreMap(shard).split(":")(0), solrNodeUser, solrNodePassword)
