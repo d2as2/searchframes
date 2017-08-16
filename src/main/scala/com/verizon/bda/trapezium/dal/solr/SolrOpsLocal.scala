@@ -11,19 +11,19 @@ class SolrOpsLocal(solrMap: Map[String, String]) extends SolrOps(solrMap: Map[St
 
   override lazy val log = Logger.getLogger(classOf[SolrOpsLocal])
   lazy val movingDirectory = solrMap("storageDir") + collectionName
-  lazy val map: Map[String, ListBuffer[String]] = CollectIndices.
+
+  lazy val map: Map[String, ListBuffer[(String, String)]] = CollectIndices.
     moveFilesFromHdfsToLocal(solrMap, getSolrNodes,
-      indexFilePath, movingDirectory)
+      indexFilePath, movingDirectory, coreMap)
 
 
   def createCores(): Unit = {
     log.info("inside create cores")
     val list = new ListBuffer[String]
     for ((host, fileList) <- map) {
-      for (directory <- fileList.toList) {
+      for ((directory, coreName) <- fileList.toList) {
         val id = directory.split("-").last.toInt + 1
         val port = solrMap("solrPort")
-        val coreName = s"${collectionName}_shard${id}_replica1"
         val url = s"http://" + host + s":${port}/solr/admin/cores?" +
           "action=CREATE&" +
           s"collection=${collectionName}&" +

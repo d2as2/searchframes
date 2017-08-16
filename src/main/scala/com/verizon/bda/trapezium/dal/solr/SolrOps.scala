@@ -3,7 +3,6 @@ package com.verizon.bda.trapezium.dal.solr
 import java.nio.file.{Path, Paths}
 import java.sql.Time
 
-import com.verizon.bda.trapezium.dal.exceptions.SolrOpsException
 import org.apache.http.client.methods.HttpGet
 import org.apache.http.impl.client.HttpClientBuilder
 import org.apache.log4j.Logger
@@ -11,7 +10,7 @@ import org.apache.solr.client.solrj.impl.ZkClientClusterStateProvider
 
 import scala.collection.JavaConverters._
 import scala.xml.XML
-import scalaj.http.{Http, HttpResponse}
+import scalaj.http.Http
 
 /**
   * Created by venkatesh on 8/3/17.
@@ -44,13 +43,13 @@ abstract class SolrOps(solrMap: Map[String, String]) {
 
   def unloadCore(node: String, coreName: String): Boolean = {
     log.info("unloading core")
-    val solrServerUrl = "http://" + node + s"/solr/admin/cores"
-    val url = Http(solrServerUrl)
-    val response: HttpResponse[String] = url.param("action", "UNLOAD")
-      .param("core", coreName)
-      .asString
-    log.info(s"unloading core response ${response.body}")
-    response.is2xx
+    val client = HttpClientBuilder.create().build()
+    val request = new HttpGet("http://" + node + s"/solr/admin/cores?action=UNLOAD&core=${coreName}")
+    // check for response status (should be 0)
+    val response = client.execute(request)
+    response.getStatusLine.getStatusCode==200
+//    log.info(s"response: ${response} ")
+//    log.info(s"response status: ${response.getStatusLine} ")
   }
 
   def upload(): Unit = {
