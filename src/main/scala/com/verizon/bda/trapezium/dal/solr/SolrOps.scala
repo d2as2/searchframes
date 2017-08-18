@@ -132,7 +132,7 @@ abstract class SolrOps(solrMap: Map[String, String]) {
 
   def makeSolrCollection(aliasName: String, hdfsPath: String, workflowTime: Time): Unit = {
     this.aliasCollectionName = aliasName
-    this.indexFilePath = if (hdfsPath.last == File.separator) {
+    this.indexFilePath = if (hdfsPath.last.toString == File.separator) {
       hdfsPath.slice(0, hdfsPath.length - 1)
     } else {
       hdfsPath
