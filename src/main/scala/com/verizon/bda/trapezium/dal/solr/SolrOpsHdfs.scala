@@ -16,7 +16,7 @@ class SolrOpsHdfs(solrMap: Map[String, String]) extends SolrOps(solrMap: Map[Str
     log.info("creating cores")
     val list = new ListBuffer[String]
     for ((coreName, host) <- coreMap) {
-      unloadCore(host, coreName)
+      SolrOps.unloadCore(host, coreName)
 
       val tmp = coreName.split("_")
       val shard_index = tmp(tmp.size - 2).substring(5).toInt
@@ -32,7 +32,7 @@ class SolrOpsHdfs(solrMap: Map[String, String]) extends SolrOps(solrMap: Map[Str
         s"shard=$shard"
       list.append(url)
     }
-    makCoreCreation(list.toList)
+    SolrOps.makeHttpRequests(list.toList)
   }
 
 

@@ -13,7 +13,7 @@ class SolrOpsLocal(solrMap: Map[String, String]) extends SolrOps(solrMap: Map[St
   lazy val movingDirectory = solrMap("storageDir") + collectionName
 
   lazy val map: Map[String, ListBuffer[(String, String)]] = CollectIndices.
-    moveFilesFromHdfsToLocal(solrMap, getSolrNodes,
+    moveFilesFromHdfsToLocal(solrMap,
       indexFilePath, movingDirectory, coreMap)
 
 
@@ -23,8 +23,7 @@ class SolrOpsLocal(solrMap: Map[String, String]) extends SolrOps(solrMap: Map[St
     for ((host, fileList) <- map) {
       for ((directory, coreName) <- fileList.toList) {
         val id = directory.split("-").last.toInt + 1
-        val port = solrMap("solrPort")
-        val url = s"http://" + host + s":${port}/solr/admin/cores?" +
+        val url = s"http://$host/solr/admin/cores?" +
           "action=CREATE&" +
           s"collection=${collectionName}&" +
           s"collection.configName=${configName}&" +
@@ -34,7 +33,7 @@ class SolrOpsLocal(solrMap: Map[String, String]) extends SolrOps(solrMap: Map[St
         list.append(url)
       }
     }
-    makCoreCreation(list.toList)
+    SolrOps.makeHttpRequests(list.toList)
   }
 
 

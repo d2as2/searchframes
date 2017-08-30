@@ -18,11 +18,11 @@ class CollectIndices {
   val log = Logger.getLogger(classOf[CollectIndices])
   var session: Session = _
 
-  def initSession(host: String, user: String, password: String) {
+  def initSession(host: String, user: String, privateKey: String) {
     val jsch = new JSch
+    jsch.addIdentity(privateKey)
     session = jsch.getSession(user, host, 22)
     session.setConfig("StrictHostKeyChecking", "no")
-    session.setPassword(password)
     session.setTimeout(10000)
     log.info(s"making ssh session with ${user}@${host}")
 
@@ -65,7 +65,7 @@ class CollectIndices {
         return code
       }
     }
-    return code
+    code
   }
 
   def printResult(in: InputStream, channel: ChannelExec): Int = {
@@ -82,7 +82,7 @@ class CollectIndices {
         continueLoop = false
       }
     }
-    return channel.getExitStatus
+    channel.getExitStatus
   }
 
 
@@ -92,23 +92,24 @@ object CollectIndices {
   val log = Logger.getLogger(classOf[CollectIndices])
   val machineMap: MMap[String, CollectIndices] = new mutable.HashMap[String, CollectIndices]()
 
-  def getMachine(host: String, solrNodeUser: String, solrNodePassword: String): CollectIndices = {
+  def getMachine(host: String, solrNodeUser: String, machinePrivateKey: String): CollectIndices = {
     if (machineMap.contains(host)) {
       machineMap(host)
     } else {
       val scpHost = new CollectIndices
-      scpHost.initSession(host, solrNodeUser, solrNodePassword)
+      scpHost.initSession(host, solrNodeUser, machinePrivateKey)
       machineMap(host) = scpHost
       scpHost
     }
   }
 
-  def moveFilesFromHdfsToLocal(solrMap: Map[String, String], solrNodeHosts: List[String],
+  def moveFilesFromHdfsToLocal(solrMap: Map[String, String],
                                indexFilePath: String,
-                               movingDirectory: String, coreMap: Map[String, String]): Map[String, ListBuffer[(String, String)]] = {
+                               movingDirectory: String, coreMap: Map[String, String])
+  : Map[String, ListBuffer[(String, String)]] = {
     log.info("inside move files")
     val solrNodeUser = solrMap("solrUser")
-    val solrNodePassword = solrMap("solrNodePassword")
+    val machinePrivateKey = solrMap("machinePrivateKey")
     val solrNodes = new ListBuffer[CollectIndices]
 
     val shards = coreMap.keySet.toArray
@@ -123,7 +124,8 @@ object CollectIndices {
       val partFile = folderPrefix + (tmp(tmp.length - 2).substring(5).toInt - 1)
       log.info(s"partFile ${partFile}")
       val file = indexFilePath + partFile
-      val machine: CollectIndices = getMachine(coreMap(shard).split(":")(0), solrNodeUser, solrNodePassword)
+      val machine: CollectIndices = getMachine(coreMap(shard)
+        .split(":")(0), solrNodeUser, machinePrivateKey)
       val command = s"hdfs dfs -copyToLocal $file ${movingDirectory};" +
         s"chmod 777 -R ${movingDirectory};"
       log.info(s"command: ${command}")
@@ -134,14 +136,15 @@ object CollectIndices {
     val fileMap = parallelSshFire(sshSequence, movingDirectory)
     machineMap.values.foreach(_.disconnectSession())
     log.info(s"map prepared was " + fileMap.toMap)
-    return fileMap.toMap[String, ListBuffer[(String, String)]]
+    fileMap.toMap[String, ListBuffer[(String, String)]]
   }
 
   def parallelSshFire(sshSequence: Array[(CollectIndices, String, String, String)],
                       directory: String): MMap[String, ListBuffer[(String, String)]] = {
     var map = MMap[String, ListBuffer[(String, String)]]()
 
-    val pc1: ParArray[(CollectIndices, String, String, String)] = ParArray.createFromCopy(sshSequence)
+    val pc1: ParArray[(CollectIndices, String, String, String)] =
+      ParArray.createFromCopy(sshSequence)
 
     pc1.tasksupport = new ForkJoinTaskSupport(new scala.concurrent.forkjoin.ForkJoinPool(20))
     pc1.map(p => {
