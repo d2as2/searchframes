@@ -10,7 +10,7 @@ import org.apache.http.client.methods.HttpGet
 import org.apache.http.impl.client.HttpClientBuilder
 import org.apache.http.util.EntityUtils
 import org.apache.log4j.Logger
-import org.json.JSONObject
+import org.codehaus.jackson.map.ObjectMapper
 
 import scalaj.http.Http
 
@@ -37,7 +37,7 @@ abstract class SolrOps(solrMap: Map[String, String]) {
   }
 
   def getSolrCollectionUrl(): String = {
-    val host = SolrClusterStatus.getSolrNodes.head
+    val host = SolrClusterStatus.solrNodes.head
     val solrServerUrl = s"http://$host/solr/admin/collections"
     solrServerUrl
   }
@@ -50,7 +50,6 @@ abstract class SolrOps(solrMap: Map[String, String]) {
       .param("name", aliasCollectionName)
       .param("action", "CREATEALIAS").asString
     log.info(s"aliasing collection response ${response.body}")
-
   }
 
   def deleteCollection(collectionName: String): Unit = {
@@ -68,21 +67,29 @@ abstract class SolrOps(solrMap: Map[String, String]) {
     deleteCollection(collectionName)
     log.info(s"creating collection : ${collectionName} ")
 
-    val nodeCount = SolrClusterStatus.getSolrNodes.size
-    val numShards = solrMap("numShards")
+    val nodeCount = SolrClusterStatus.solrNodes.size
+    val numShards = CollectIndices.getHdfsList(solrMap, this.indexFilePath).length
+    if (numShards == 0) {
+      throw new SolrOpsException(s"Cannot create collection with numshard count $numShards")
+    }
     val replicationFactor = solrMap("replicationFactor")
     val maxShardsPerNode = ((numShards.toInt * replicationFactor.toInt) / nodeCount + 1).toString
     val asyncId = UUID.randomUUID().toString
-    val createCollectionUrl = s"$solrServerUrl?name=$collectionName&numShards=$numShards&" +
-      s"replicationFactor=$replicationFactor&maxShardsPerNode=$maxShardsPerNode" +
-      s"&collection.configName=$configName&router.name=compositeId&async=$asyncId"
+    val createCollectionUrl = s"$solrServerUrl?action=CREATE&" +
+      s"name=$collectionName" +
+      s"&numShards=$numShards&" +
+      s"replicationFactor=$replicationFactor&" +
+      s"maxShardsPerNode=$maxShardsPerNode" +
+      s"&collection.configName=$configName&" +
+      s"router.name=compositeId&async=$asyncId"
+
     SolrOps.makeHttpRequest(createCollectionUrl)
 
     log.info(s"polling on request for asyncId: ${asyncId}")
 
     while (!isReqComplete(asyncId)) {
       log.info(s"continuing to poll on request for asyncId: ${asyncId}")
-      Thread.sleep(500)
+      Thread.sleep(2000)
     }
     log.info(s"poll completed on request for asyncId: ${asyncId}")
 
@@ -119,8 +126,11 @@ abstract class SolrOps(solrMap: Map[String, String]) {
     val url = getSolrCollectionUrl()
     val asyncUrl = s"$url?action=REQUESTSTATUS&requestid=$asyncId&wt=json"
     val response = SolrOps.makeHttpRequest(asyncUrl)
-    val tomJsonObject = new JSONObject(response)
-    val asyncState = tomJsonObject.get("status").asInstanceOf[JSONObject].get("state").toString
+    val objectMapper = new ObjectMapper()
+    val jsonNode = objectMapper.readTree(response)
+    val asyncState = jsonNode.get("status").get("state").asText()
+    log.info(s"async state for $asyncId is $asyncState")
+    log.info(response)
     asyncState.equalsIgnoreCase("completed")
   }
 
@@ -135,7 +145,7 @@ object SolrOps {
     mode.toUpperCase() match {
       case "HDFS" => {
         val set = Set("appName", "zkHosts", "nameNode", "zroot", "storageDir",
-          "solrConfig", "numShards", "replicationFactor", "solrPort")
+          "solrConfig", "replicationFactor")
         set.foreach(p =>
           if (!params.contains(p)) {
             throw new SolrOpsException(s"Map Doesn't have ${p} map should contain ${set}")
@@ -143,12 +153,16 @@ object SolrOps {
         new SolrOpsHdfs(params)
       }
       case "LOCAL" => {
-        val set = Set("appName", "zkHosts", "nameNode", "machinePrivateKey", "solrUser",
-          "folderPrefix", "zroot", "storageDir", "solrConfig", "solrPort", "numShards", "replicationFactor")
+        val set = Set("appName", "zkHosts", "nameNode", "solrUser",
+          "folderPrefix", "zroot", "storageDir", "solrConfig", "replicationFactor")
         set.foreach(p =>
           if (!params.contains(p)) {
             throw new SolrOpsException(s"Map Doesn't have ${p} map should contain ${set}")
           })
+        if (!params.contains("machinePrivateKey")) {
+          log.warn("missing key:machinePrivateKey and hence" +
+            " assigning a default value: ~/.ssh/id_rsa")
+        }
         new SolrOpsLocal(params)
       }
     }
@@ -178,9 +192,9 @@ object SolrOps {
     // check for response status (should be 0)
     log.info(s"making request to url ${url}")
     val response = client.execute(request)
-    log.info(s"response: ${response} ")
     log.info(s"response status: ${response.getStatusLine} ")
     val responseBody = EntityUtils.toString(response.getEntity())
+    log.info(s"responseBody: ${responseBody} ")
     response.close()
     client.close()
     responseBody

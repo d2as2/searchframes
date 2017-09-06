@@ -1,100 +1,110 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-	<modelVersion>4.0.0</modelVersion>
-	<parent>
-		<groupId>com.verizon.bda</groupId>
-		<artifactId>trapezium-parent</artifactId>
-		<version>1.2.0-SNAPSHOT</version>
-		<relativePath>../pom.xml</relativePath>
-	</parent>
-        
-	<artifactId>trapezium-dal</artifactId>
-	<packaging>jar</packaging>
-	<name>Trapezium dal library</name>
-        
-	<dependencies>
-	        <dependency>
-	                <groupId>org.apache.solr</groupId>
-	                <artifactId>solr-solrj</artifactId>
-	                <version>6.5.1</version>
-                        <exclusions>
-                          <exclusion>
-                            <groupId>org.jboss.netty</groupId>
-                            <artifactId>netty</artifactId>
-                          </exclusion>
-                        </exclusions>
-	        </dependency>
-                <dependency>
-			<groupId>org.scalaj</groupId>
-			<artifactId>scalaj-http_2.10</artifactId>
-			<version>2.3.0</version>
-		</dependency>
-                <dependency>
-                        <groupId>com.jcraft</groupId>
-                        <artifactId>jsch</artifactId>
-                        <version>0.1.54</version>
-                </dependency>
-		<dependency>
-			<groupId>org.apache.spark</groupId>
-			<artifactId>spark-core_${scala.binary.version}</artifactId>
-			<version>${spark.version}</version>
-		</dependency>
-		<dependency>
-                        <groupId>org.apache.spark</groupId>
-                        <artifactId>spark-mllib_${scala.binary.version}</artifactId>
-                        <version>${spark.version}</version>
-                </dependency>
-                
-		<dependency>
-			<groupId>org.apache.spark</groupId>
-			<artifactId>spark-sql_${scala.binary.version}</artifactId>
-			<version>${spark.version}</version>
-		</dependency>
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.verizon.bda</groupId>
+        <artifactId>trapezium-parent</artifactId>
+        <version>1.2.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
 
-		<dependency>
-			<groupId>org.apache.spark</groupId>
-			<artifactId>spark-hive_${scala.binary.version}</artifactId>
-			<version>${spark.version}</version>
-		</dependency>
+    <artifactId>trapezium-dal</artifactId>
+    <packaging>jar</packaging>
+    <name>Trapezium dal library</name>
 
-		<dependency>
-			<groupId>org.apache.spark</groupId>
-			<artifactId>spark-mllib_${scala.binary.version}</artifactId>
-			<type>test-jar</type>
-			<scope>test</scope>
-			<version>${spark.version}</version>
-		</dependency>
+    <dependencies>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.9.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.solr</groupId>
+            <artifactId>solr-core</artifactId>
+            <version>6.5.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.solr</groupId>
+            <artifactId>solr-solrj</artifactId>
+            <version>6.5.1</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.jboss.netty</groupId>
+                    <artifactId>netty</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.scalaj</groupId>
+            <artifactId>scalaj-http_2.10</artifactId>
+            <version>2.3.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.jcraft</groupId>
+            <artifactId>jsch</artifactId>
+            <version>0.1.54</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-core_${scala.binary.version}</artifactId>
+            <version>${spark.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-mllib_${scala.binary.version}</artifactId>
+            <version>${spark.version}</version>
+        </dependency>
 
-		<dependency>
-			<groupId>org.apache.lucene</groupId>
-			<artifactId>lucene-core</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>org.apache.lucene</groupId>
-			<artifactId>lucene-analyzers-common</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>org.apache.lucene</groupId>
-			<artifactId>lucene-queryparser</artifactId>
-		</dependency>
-		
-		<dependency>
-			<groupId>com.holdenkarau</groupId>
-			<artifactId>spark-testing-base_2.10</artifactId>
-			<scope>test</scope>
-		</dependency>
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-sql_${scala.binary.version}</artifactId>
+            <version>${spark.version}</version>
+        </dependency>
 
-		<dependency>
-			<groupId>org.scalacheck</groupId>
-			<artifactId>scalacheck_${scala.binary.version}</artifactId>
-			<scope>test</scope>
-		</dependency>
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-hive_${scala.binary.version}</artifactId>
+            <version>${spark.version}</version>
+        </dependency>
 
-	</dependencies>
-	<build>
-		<outputDirectory>target/scala-${scala.binary.version}/classes</outputDirectory>
-		<testOutputDirectory>target/scala-${scala.binary.version}/test-classes</testOutputDirectory>
-	</build>
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-mllib_${scala.binary.version}</artifactId>
+            <type>test-jar</type>
+            <scope>test</scope>
+            <version>${spark.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.lucene</groupId>
+            <artifactId>lucene-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.lucene</groupId>
+            <artifactId>lucene-analyzers-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.lucene</groupId>
+            <artifactId>lucene-queryparser</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.holdenkarau</groupId>
+            <artifactId>spark-testing-base_2.10</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.scalacheck</groupId>
+            <artifactId>scalacheck_${scala.binary.version}</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+    <build>
+        <outputDirectory>target/scala-${scala.binary.version}/classes</outputDirectory>
+        <testOutputDirectory>target/scala-${scala.binary.version}/test-classes</testOutputDirectory>
+    </build>
 </project>

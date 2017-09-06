@@ -1,5 +1,6 @@
 package com.verizon.bda.trapezium.dal.solr
 
+import org.apache.log4j.Logger
 import org.apache.solr.client.solrj.impl.ZkClientClusterStateProvider
 import org.json.JSONObject
 
@@ -13,6 +14,8 @@ case class SolrCollectionStatus(machine: String, state: String, collectionName: 
                                 configName: String, coreName: String, shard: String)
 
 object SolrClusterStatus {
+  lazy val log = Logger.getLogger(SolrClusterStatus.getClass)
+
   var zkHostList: String = _
   // "listOfzookeepers"
   var chroot: String = _
@@ -30,13 +33,16 @@ object SolrClusterStatus {
 
   lazy val solrResponseBody = getClusterStatus()
 
+  lazy val solrNodes = getSolrNodes
   // solrMap("zkHosts")
   lazy val zkHosts = zkHostList.split(",").toList.asJava
 
   def getSolrNodes: List[String] = {
-    cloudClient.liveNodes()
+    val liveNodes = cloudClient.liveNodes()
       .asScala.toList
       .map(p => p.split("_")(0))
+    log.info(s"retrieved the solrnodes ${liveNodes.mkString(",")} from zookeeper")
+    liveNodes
   }
 
   def getSolrclient(): ZkClientClusterStateProvider = {
@@ -44,7 +50,7 @@ object SolrClusterStatus {
   }
 
   def getClusterStatus(): String = {
-    val node: String = getSolrNodes(0)
+    val node: String = solrNodes(0)
     val url = s"http://$node/solr/admin/collections?action=CLUSTERSTATUS" +
       s"&wt=json&collection=$collectionName"
     SolrOps.makeHttpRequest(url)
