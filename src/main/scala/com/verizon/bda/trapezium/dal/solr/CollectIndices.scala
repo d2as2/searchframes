@@ -105,7 +105,11 @@ object CollectIndices {
       machineMap(host)
     } else {
       val scpHost = new CollectIndices
-      scpHost.initSession(host, solrNodeUser, machinePrivateKey)
+      if (machinePrivateKey == null) {
+        scpHost.initSession(host, solrNodeUser)
+      } else {
+        scpHost.initSession(host, solrNodeUser, machinePrivateKey)
+      }
       machineMap(host) = scpHost
       scpHost
     }
@@ -117,7 +121,7 @@ object CollectIndices {
   : Map[String, ListBuffer[(String, String)]] = {
     log.info("inside move files")
     val solrNodeUser = solrMap("solrUser")
-    val machinePrivateKey = solrMap("machinePrivateKey")
+    val machinePrivateKey = solrMap.getOrElse("machinePrivateKey", null)
     val solrNodes = new ListBuffer[CollectIndices]
 
     val shards = coreMap.keySet.toArray

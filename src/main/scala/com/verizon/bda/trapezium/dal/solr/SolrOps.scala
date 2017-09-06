@@ -160,7 +160,7 @@ object SolrOps {
             throw new SolrOpsException(s"Map Doesn't have ${p} map should contain ${set}")
           })
         if (!params.contains("machinePrivateKey")) {
-          log.warn("missing key:machinePrivateKey and hence" +
+          log.warn("missing key:machinePrivateKey  hence" +
             " assigning a default value: ~/.ssh/id_rsa")
         }
         new SolrOpsLocal(params)
