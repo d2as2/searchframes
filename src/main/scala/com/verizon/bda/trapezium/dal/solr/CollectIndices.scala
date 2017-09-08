@@ -26,7 +26,7 @@ class CollectIndices {
     jsch.addIdentity(privateKey)
     session = jsch.getSession(user, host, 22)
     session.setConfig("StrictHostKeyChecking", "no")
-    session.setTimeout(10000)
+    session.setTimeout(1000000)
     log.info(s"making ssh session with ${user}@${host}")
 
     session.connect()
@@ -147,6 +147,7 @@ object CollectIndices {
     machineMap.values.foreach(_.runCommand(command, false))
     val fileMap = parallelSshFire(sshSequence, movingDirectory, coreMap)
     machineMap.values.foreach(_.disconnectSession())
+    machineMap.clear()
     log.info(s"map prepared was " + fileMap.toMap)
     fileMap.toMap[String, ListBuffer[(String, String)]]
   }
