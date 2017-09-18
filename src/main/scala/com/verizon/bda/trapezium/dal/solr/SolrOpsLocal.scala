@@ -33,6 +33,7 @@ class SolrOpsLocal(solrMap: Map[String, String]) extends SolrOps(solrMap: Map[St
         list.append(url)
       }
     }
+    log.info(list.toList)
     SolrOps.makeHttpRequests(list.toList)
   }
 
