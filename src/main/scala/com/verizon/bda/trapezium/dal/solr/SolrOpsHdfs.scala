@@ -29,7 +29,8 @@ class SolrOpsHdfs(solrMap: Map[String, String]) extends SolrOps(solrMap: Map[Str
         s"collection.configName=${configName}&" +
         s"name=${coreName}&" +
         s"dataDir=${directory}&" +
-        s"shard=$shard"
+        s"shard=$shard" +
+        s"&wt=json&indent=true"
       list.append(url)
     }
     SolrOps.makeHttpRequests(list.toList)

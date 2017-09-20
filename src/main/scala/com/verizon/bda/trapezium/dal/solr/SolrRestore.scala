@@ -38,7 +38,8 @@ object SolrRestore {
         s"collection.configName=${p.configName}&" +
         s"name=${p.coreName}&" +
         s"dataDir=${dataDir}&" +
-        s"shard=${p.shard}"
+        s"shard=${p.shard}&" +
+        s"wt=json&indent=true"
     })
     SolrOps.makeHttpRequests(li2)
   }

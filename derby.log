@@ -1,0 +1,15 @@
+----------------------------------------------------------------
+Mon Sep 18 15:24:09 PDT 2017:
+Booting Derby version The Apache Software Foundation - Apache Derby - 10.10.2.0 - (1582446): instance a816c00e-015e-9717-70eb-000027f4efe8 
+on database directory /Users/poosave/Documents/git/trapezium/dal/target/tmp/spark-014e9eb9-d179-4ad2-9a00-a66d7280cb2c/metastore with class loader org.apache.spark.sql.hive.client.IsolatedClientLoader$$anon$1@653b49c4 
+Loaded from file:/Users/poosave/.m2/repository/org/apache/derby/derby/10.10.2.0/derby-10.10.2.0.jar
+java.vendor=Oracle Corporation
+java.runtime.version=1.8.0_121-b13
+user.dir=/Users/poosave/Documents/git/trapezium/dal
+os.name=Mac OS X
+os.arch=x86_64
+os.version=10.12.6
+derby.system.home=null
+Warning: The database is booted with derby.system.durability=test. In this mode, it is possible that database may not be able to recover, committed transactions may be lost, database may be in an inconsistent state. Please use this mode only when these consequences are acceptable  
+
+Database Class Loader started - derby.database.classpath=''
