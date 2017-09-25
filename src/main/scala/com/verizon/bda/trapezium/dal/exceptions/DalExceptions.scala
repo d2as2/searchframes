@@ -12,12 +12,14 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 */
-/**
- * Copyright (C) Verizon Corp.
- */
 package com.verizon.bda.trapezium.dal.exceptions
 
 /**
  * @author pramod.lakshminarasimha
+ *         Dec 15, 2016 debasish83 LuceneDAO exception
  */
 case class HiveDAOException(ex: String) extends Exception(ex)
+
+case class LuceneDAOException(ex: String) extends Exception(ex)
+
+case class SolrOpsException(ex: String) extends Exception(ex)

@@ -1,5 +1,9 @@
 package com.verizon.bda.trapezium.dal.lucene
 
+/**
+  * @author pramod.lakshminarasimha
+  *
+  */
 import java.io.File
 
 import com.holdenkarau.spark.testing.SharedSparkContext
@@ -8,6 +12,8 @@ import org.apache.hadoop.fs.Path
 import org.apache.lucene.document.{Document, StringField}
 import org.apache.lucene.document._
 import org.apache.lucene.search.IndexSearcher
+import org.apache.spark.SparkConf
+import org.apache.spark.serializer.{KryoSerializer, SerializerInstance}
 import org.apache.spark.sql.{Row, SQLContext}
 import org.apache.spark.sql.types._
 import org.scalatest.{BeforeAndAfterAll, FunSuite}
@@ -15,6 +21,8 @@ import org.scalatest.{BeforeAndAfterAll, FunSuite}
 import scala.collection.JavaConverters._
 
 class TestConverter extends SparkLuceneConverter {
+  @transient lazy val ser: SerializerInstance = new KryoSerializer(new SparkConf()).newInstance()
+
   override def rowToDoc(r: Row): Document = {
     val d = new Document()
     schema.foreach {
@@ -28,13 +36,12 @@ class TestConverter extends SparkLuceneConverter {
 
       case StructField(name: String, ArrayType(IntegerType, _), _, _) =>
         r.getList[Int](indicesIndex).asScala.foreach { i =>
-          d.add(new IntField(name, i, Field.Store.YES))
+          d.add(new IntPoint(name, i))
         }
     }
-
     d
   }
-
+  
   lazy val tldIndex = schema.fieldIndex("tld")
   lazy val indicesIndex = schema.fieldIndex("indices")
 

@@ -3,18 +3,27 @@ package com.verizon.bda.trapezium.dal.lucene
 import org.apache.hadoop.fs.Path
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-
 import scala.collection.mutable.{ArrayBuffer => MArray, Map => MMap}
 
 /**
   * Class to manage dictionaries for multiple dimensions.
   *
   * @author pramod.lakshminarasimha on 8/10/16.
+  *         debasish83 12/22/16 Used natively in LuceneDAO for dictionary encoding
   */
+
+// TODO: Use prefix tree (trie) to decrease the dictionary size
+
+case class FeatureAttr(dictionaryPos: Int, featureOffset: Int) {
+  val max = dictionaryPos + featureOffset
+
+  def contains(id: Int): Boolean = {
+    if (id >= dictionaryPos && id < max) return true
+    else false
+  }
+}
+
 class DictionaryManager extends Serializable {
-
-  case class FeatureAttr(dictionaryPos: Int, featureOffset: Int) extends Serializable
-
   /**
     * offset points to the last index of the aggregated features
     * array in {{{featureNameLookup}}}
@@ -28,6 +37,9 @@ class DictionaryManager extends Serializable {
   private var dictionaries: MArray[Map[String, Int]] = MArray[Map[String, Int]]()
   private val featureNameLookup: MArray[String] = MArray[String]()
 
+
+  def getNames(): Set[String] = namesMap.keySet.toSet
+
   /**
     * Function to create index for a dimension and append to current dictionary.
     *
@@ -36,16 +48,16 @@ class DictionaryManager extends Serializable {
     */
   def addToDictionary(name: String, rdd: RDD[String]): Unit = {
 
-    require(!dictionaries.contains(name), s"Dictionary already created for ${name}")
+    if (!namesMap.contains(name)) {
+      val dictionary: Map[String, Int] = rdd.distinct()
+        .zipWithIndex
+        .map(kv => (kv._1, kv._2.toInt + offset))
+        .collect().toMap
 
-    val dictionary: Map[String, Int] = rdd.distinct()
-      .zipWithIndex
-      .map(kv => (kv._1, kv._2.toInt + offset))
-      .collect().toMap
-
-    dictionaries.append(dictionary)
-    namesMap.put(name, FeatureAttr(dictionaries.size - 1, offset))
-    updateFeatureNameLookup(dictionary)
+      dictionaries.append(dictionary)
+      namesMap.put(name, FeatureAttr(dictionaries.size - 1, offset))
+      updateFeatureNameLookup(dictionary)
+    }
   }
 
   /**
@@ -145,11 +157,17 @@ class DictionaryManager extends Serializable {
     val a: Array[String] = Array.fill[String](dictionary.size)("")
 
     dictionary.foreach((x: (String, Int)) => {
-      a((x._2 - offset).toInt) = x._1
+      a((x._2 - offset)) = x._1
     })
 
     featureNameLookup.appendAll(a)
     offset = featureNameLookup.size
+  }
+
+  def clear(): Unit = {
+    namesMap.clear()
+    dictionaries.clear()
+    featureNameLookup.clear()
   }
 
   override def toString: String = {

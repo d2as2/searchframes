@@ -1,14 +1,16 @@
 package com.verizon.bda.trapezium.dal.lucene
 
+/**
+  * @author pramod.lakshminarasimha
+  *
+  */
 import java.io.{File, IOException}
 import java.nio.file.FileSystems
-
 import org.apache.commons.io.FileUtils
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.log4j.Logger
 import org.apache.lucene.analysis.core.KeywordAnalyzer
-import org.apache.lucene.document.Document
 import org.apache.lucene.index.{DirectoryReader, IndexWriter, IndexWriterConfig}
 import org.apache.lucene.index.IndexWriterConfig.OpenMode
 import org.apache.lucene.queryparser.classic.QueryParser
@@ -18,11 +20,9 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.rdd.RDD.numericRDDToDoubleRDDFunctions
 import org.apache.spark.sql.{DataFrame, Row}
-import org.apache.spark.sql.types.StructType
 
 // noinspection ScalaStyle
-
-
+@deprecated("replaced by LuceneDAO", "1.0.0")
 class LuceneIndexer(env: String, val indexPathInput: String,
                     val hdfsPath: String,
                     defaultSearchField: String,
@@ -149,7 +149,6 @@ class LuceneIndexer(env: String, val indexPathInput: String,
       topDocs.scoreDocs.map { d => converter.docToRow(searcher.doc(d.doc)) }
     }
     }
-
     rows
   }
 
@@ -159,14 +158,4 @@ class LuceneIndexer(env: String, val indexPathInput: String,
     }
     }.sum().toInt
   }
-}
-
-trait SparkLuceneConverter extends Serializable {
-
-  def rowToDoc(r: Row): Document
-
-  def docToRow(d: Document): Row
-
-  val schema: StructType
-
 }
