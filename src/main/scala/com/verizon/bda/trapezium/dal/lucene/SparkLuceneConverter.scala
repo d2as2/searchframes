@@ -7,15 +7,17 @@ package com.verizon.bda.trapezium.dal.lucene
 
 import com.verizon.bda.trapezium.dal.exceptions.LuceneDAOException
 import org.apache.lucene.util.BytesRef
-import org.apache.spark.Logging
 import org.apache.spark.serializer.SerializerInstance
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types._
 import org.apache.lucene.document._
 import java.sql.Timestamp
 
-trait SparkLuceneConverter extends SparkSQLProjections with Serializable with Logging {
+import org.slf4j.LoggerFactory
 
+trait SparkLuceneConverter extends SparkSQLProjections with Serializable  {
+
+  private val log = LoggerFactory.getLogger(this.getClass)
 
   def rowToDoc(r: Row): Document
 
@@ -81,7 +83,7 @@ trait SparkLuceneConverter extends SparkSQLProjections with Serializable with Lo
         // val bytes = ser.serialize(value).array()
         val bytes = VectorProjection(VectorType.serialize(value)).getBytes
         new BinaryDocValuesField(name, new BytesRef(bytes))
-      case _ => logInfo(s"serializing ${dataType.typeName} as binary doc value field")
+      case _ => log.info(s"serializing ${dataType.typeName} as binary doc value field")
         val bytes = ser.serialize(value).array()
         new BinaryDocValuesField(name, new BytesRef(bytes))
     }
