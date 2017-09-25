@@ -210,7 +210,7 @@ object SolrOps {
   def makeHttpRequest(url: String, retry: Int = 5): String = {
     var responseBody: String = null
     var noError = false
-    var retries = retry
+    var retries = 0
     do {
       val client = HttpClientBuilder.create().build()
       val request = new HttpGet(url)
@@ -218,20 +218,21 @@ object SolrOps {
       log.info(s"making request to url ${url}")
       if (client != null && request != null) {
         val response = client.execute(request)
-        log.info(s"response status: ${response.getStatusLine} ")
+        log.info(s"response status: ${response.getStatusLine} and status" +
+          s" code ${response.getStatusLine.getStatusCode} ")
         responseBody = EntityUtils.toString(response.getEntity())
-        log.info(s"responseBody: ${responseBody} ")
+        log.info(s"responseBody: ${responseBody} for url ")
         if (response.getStatusLine.getStatusCode != 200) {
           noError = true
         } else {
-          log.info(s"reattempting to make request to $url due to request" +
-            s" failure for the retry count $retries")
-          retries = retries - 1
+          log.info(s"attempting to make request to $url  for the retry count $retries of $retry")
+          retries = retries + 1
+          noError = false
         }
         response.close()
         client.close()
       }
-    } while (retries > 0 && noError)
+    } while (retry > retries && noError)
     responseBody
   }
 }

@@ -5,6 +5,10 @@ import com.verizon.bda.trapezium.dal.exceptions.SolrOpsException
 /**
   * Created by venkatesh on 8/28/17.
   */
+
+case class SolrRestore(movingDirectory: String, folderPrefix1: String,
+                       zkList: String, zroot: String, collection: String)
+
 object SolrRestore {
 
 
@@ -14,6 +18,7 @@ object SolrRestore {
         s" movingDir folderPrefix collectionName" +
         s"example: /usr/sample/colectionFolder /part- /dailyView")
     }
+
     val folderPrefix1 = args(1)
     val movingDirectory = args(0)
     val collection = args(2)

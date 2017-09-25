@@ -13,6 +13,7 @@ import scala.collection.mutable.ListBuffer
 case class SolrCollectionStatus(machine: String, state: String, collectionName: String,
                                 configName: String, coreName: String, shard: String)
 
+
 object SolrClusterStatus {
   lazy val log = Logger.getLogger(SolrClusterStatus.getClass)
 
@@ -31,7 +32,6 @@ object SolrClusterStatus {
   lazy val cloudClient: ZkClientClusterStateProvider =
     new ZkClientClusterStateProvider(zkHosts, chroot)
 
-  lazy val solrResponseBody = getClusterStatus()
 
   lazy val solrNodes = getSolrNodes
   // solrMap("zkHosts")
@@ -49,10 +49,10 @@ object SolrClusterStatus {
     new ZkClientClusterStateProvider(zkHosts, chroot)
   }
 
-  def getClusterStatus(): String = {
+  def getClusterStatus(collection: String): String = {
     val node: String = solrNodes(0)
     val url = s"http://$node/solr/admin/collections?action=CLUSTERSTATUS" +
-      s"&wt=json&collection=$collectionName"
+      s"&wt=json&collection=$collection"
     SolrOps.makeHttpRequest(url)
   }
 
@@ -60,6 +60,8 @@ object SolrClusterStatus {
     val lb = new ListBuffer[SolrCollectionStatus]
 
     // Convert JSON string to JSONObject
+    val solrResponseBody = getClusterStatus(this.collectionName)
+
     val tomJsonObject = new JSONObject(solrResponseBody)
     val test = tomJsonObject.get("cluster").asInstanceOf[JSONObject]
       .get("collections").asInstanceOf[JSONObject]
