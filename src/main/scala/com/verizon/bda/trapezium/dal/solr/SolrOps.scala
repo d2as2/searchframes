@@ -142,7 +142,7 @@ object SolrOps {
 
   def apply(mode: String,
             params: Map[String, String]): SolrOps = {
-    mode.toUpperCase() match {
+    val solrOps = mode.toUpperCase() match {
       case "HDFS" => {
         val set = Set("appName", "zkHosts", "nameNode", "zroot", "storageDir",
           "solrConfig", "replicationFactor")
@@ -166,7 +166,10 @@ object SolrOps {
         new SolrOpsLocal(params)
       }
     }
-
+    for ((k, v) <- params) {
+      log.info(s"${k}<-------->${v}")
+    }
+    solrOps
   }
 
 
@@ -181,22 +184,55 @@ object SolrOps {
   }
 
   def makeHttpRequests(list: List[String]): Unit = {
-    list.foreach(url => {
-      makeHttpRequest(url)
-    })
+    for (url <- list) {
+      val response = makeHttpRequest(url)
+      if (response != null && !response.isEmpty) {
+        try {
+          val objectMapper = new ObjectMapper()
+          val jsonNode = objectMapper.readTree(response)
+          val status = jsonNode.get("responseHeader").get("status").asInt()
+          if (status != 0) {
+            val e = new SolrOpsException(s"core could not be created for request: " +
+              s"$url response:$response")
+            log.error(e)
+            throw e
+          }
+        } catch {
+          case e: Exception =>
+            throw new SolrOpsException(s"core could not be created for request: " +
+              s"$url response:$response")
+        }
+      }
+    }
   }
 
-  def makeHttpRequest(url: String): String = {
-    val client = HttpClientBuilder.create().build()
-    val request = new HttpGet(url)
-    // check for response status (should be 0)
-    log.info(s"making request to url ${url}")
-    val response = client.execute(request)
-    log.info(s"response status: ${response.getStatusLine} ")
-    val responseBody = EntityUtils.toString(response.getEntity())
-    log.info(s"responseBody: ${responseBody} ")
-    response.close()
-    client.close()
+
+  def makeHttpRequest(url: String, retry: Int = 5): String = {
+    var responseBody: String = null
+    var noError = false
+    var retries = 0
+    do {
+      val client = HttpClientBuilder.create().build()
+      val request = new HttpGet(url)
+      // check for response status (should be 0)
+      log.info(s"making request to url ${url}")
+      if (client != null && request != null) {
+        val response = client.execute(request)
+        log.info(s"response status: ${response.getStatusLine} and status" +
+          s" code ${response.getStatusLine.getStatusCode} ")
+        responseBody = EntityUtils.toString(response.getEntity())
+        log.info(s"responseBody: ${responseBody} for url ")
+        if (response.getStatusLine.getStatusCode != 200) {
+          noError = true
+        } else {
+          log.info(s"attempting to make request to $url  for the retry count $retries of $retry")
+          retries = retries + 1
+          noError = false
+        }
+        response.close()
+        client.close()
+      }
+    } while (retry > retries && noError)
     responseBody
   }
 }
