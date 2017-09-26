@@ -1,33 +1,54 @@
 package com.verizon.bda.trapezium.dal.solr
 
 import com.verizon.bda.trapezium.dal.exceptions.SolrOpsException
+import scopt.OptionParser
 
 /**
   * Created by venkatesh on 8/28/17.
   */
 
-case class SolrRestore(movingDirectory: String, folderPrefix1: String,
-                       zkList: String, zroot: String, collection: String)
+case class SolrRestore(movingDirectory: String = null, folderPrefix1: String = null,
+                       zkList: String = null, zroot: String = null, collection: String = null)
 
 object SolrRestore {
 
 
   def main(args: Array[String]): Unit = {
-    if (args.length != 3) {
-      throw new SolrOpsException(s"should pass three arguments:" +
-        s" movingDir folderPrefix collectionName" +
-        s"example: /usr/sample/colectionFolder /part- /dailyView")
+
+    val parser: OptionParser[SolrRestore] = new OptionParser[SolrRestore]("ApplicationManager") {
+      head("SolrRestore used for used for restoring the collection to original state")
+      opt[String]("dir")
+        .text(s"moving directory")
+        .required
+        .action((x, c) => c.copy(movingDirectory = x))
+      opt[String]("zkList")
+        .text(s"zklist used")
+        .required
+        .action((x, c) => c.copy(zkList = x))
+      opt[String]("zroot")
+        .text(s"workflow to run")
+        .required
+        .action((x, c) => c.copy(zroot = x))
+      opt[String]("folderPrefix")
+        .text(s"folder prefix used")
+        .required
+        .action((x, c) => c.copy(folderPrefix1 = x))
+      opt[String]("collection")
+        .text(s"collection to be restored")
+        .required
+        .action((x, c) => c.copy(collection = x))
     }
 
-    val folderPrefix1 = args(1)
-    val movingDirectory = args(0)
-    val collection = args(2)
+    val solrRestore = parser.parse(args, SolrRestore()).get
+    val folderPrefix1 = solrRestore.folderPrefix1
+    val movingDirectory = solrRestore.movingDirectory
+    val collection = solrRestore.collection
     val folderPrefix = if (folderPrefix1.charAt(0) == '/') {
       folderPrefix1
     } else {
       "/" + folderPrefix1
     }
-    SolrClusterStatus("zkList", "zroot", collection)
+    SolrClusterStatus(solrRestore.zkList, solrRestore.zroot, collection)
     val li = SolrClusterStatus.parseSolrResponse()
       .filter(p => !(p.state.equalsIgnoreCase("active")))
     li.foreach(p => {
