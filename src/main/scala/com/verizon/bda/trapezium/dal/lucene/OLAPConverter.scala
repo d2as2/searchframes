@@ -18,8 +18,9 @@ import org.slf4j.LoggerFactory
 
 // TODO: Given a dataframe schema create all the Projection
 trait SparkSQLProjections {
-  @transient lazy val VectorProjection = UnsafeProjection.create(VectorType.sqlType)
-//  lazy val VectorType = new VectorUDT()
+  @transient lazy val VectorProjection = UnsafeProjection.create(VectorType.sql)
+  // CHeck [SPARK-16074] for usage here for VectorUDT
+  lazy val VectorType = org.apache.spark.ml.linalg.SQLDataTypes.VectorType
   lazy val unsafeRow = new UnsafeRow()
 }
 

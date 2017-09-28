@@ -137,7 +137,7 @@ class ProjectionAccessor(luceneReaders: Seq[LuceneReader],
 
   override def extract(docID: Int, offset: Int): Any = {
     val bytes = extractBytes(docID, offset)
-    unsafeRow.pointTo(bytes, VectorType.sqlType.size, bytes.size)
+    unsafeRow.pointTo(bytes, VectorType.sql.size, bytes.size)
     VectorType.deserialize(unsafeRow.asInstanceOf[InternalRow])
   }
 }
