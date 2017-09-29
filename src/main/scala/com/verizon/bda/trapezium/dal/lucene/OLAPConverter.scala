@@ -1,10 +1,9 @@
 package com.verizon.bda.trapezium.dal.lucene
 
-import org.apache.lucene.document.{Document, Field}
 import java.util.UUID
 
+import org.apache.lucene.document.{Document, Field}
 import org.apache.spark.SparkConf
-import org.apache.spark.ml.linalg.VectorUDT
 import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.expressions.{UnsafeProjection, UnsafeRow}
@@ -18,7 +17,7 @@ import org.slf4j.LoggerFactory
 
 // TODO: Given a dataframe schema create all the Projection
 trait SparkSQLProjections {
-  @transient lazy val VectorProjection = UnsafeProjection.create(VectorType.sql)
+  @transient lazy val VectorProjection = UnsafeProjection.create(Array(VectorType))
   // CHeck [SPARK-16074] for usage here for VectorUDT
   lazy val VectorType = org.apache.spark.ml.linalg.SQLDataTypes.VectorType
   lazy val unsafeRow = new UnsafeRow()
