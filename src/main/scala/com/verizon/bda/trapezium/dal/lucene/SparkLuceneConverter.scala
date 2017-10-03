@@ -81,7 +81,7 @@ trait SparkLuceneConverter extends SparkSQLProjections with Serializable  {
       case VectorType =>
         // Use Kryo by commenting VectorType if SparkSQLProjection does not perform well
         // val bytes = ser.serialize(value).array()
-        val bytes = VectorProjection(VectorType.serialize(value)).getBytes
+        val bytes = VectorProjection(VectorType.serialize(value.asInstanceOf[org.apache.spark.ml.linalg.Vector])).getBytes
         new BinaryDocValuesField(name, new BytesRef(bytes))
       case _ => log.info(s"serializing ${dataType.typeName} as binary doc value field")
         val bytes = ser.serialize(value).array()

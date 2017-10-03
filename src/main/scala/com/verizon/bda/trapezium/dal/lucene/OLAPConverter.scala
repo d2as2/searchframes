@@ -8,7 +8,8 @@ import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.expressions.{UnsafeProjection, UnsafeRow}
 import org.apache.spark.sql.types._
-import org.slf4j.LoggerFactory
+import org.apache.spark.util.CustomVectorUDT
+import org.slf4j.{Logger, LoggerFactory}
 
 /**
  * @author debasish83 on 12/22/16.
@@ -17,9 +18,9 @@ import org.slf4j.LoggerFactory
 
 // TODO: Given a dataframe schema create all the Projection
 trait SparkSQLProjections {
-  @transient lazy val VectorProjection = UnsafeProjection.create(Array(VectorType))
+  @transient lazy val VectorProjection = UnsafeProjection.create(Array(VectorType.asInstanceOf[DataType]))
   // CHeck [SPARK-16074] for usage here for VectorUDT
-  lazy val VectorType = org.apache.spark.ml.linalg.SQLDataTypes.VectorType
+  lazy val VectorType = new CustomVectorUDT()
   lazy val unsafeRow = new UnsafeRow()
 }
 
@@ -33,7 +34,15 @@ val measures: Set[String],
 val serializer: KryoSerializer) extends SparkLuceneConverter {
   @transient lazy val ser = serializer.newInstance()
 
-  @transient private val log = LoggerFactory.getLogger(this.getClass)
+  @transient private var log = LoggerFactory.getLogger(this.getClass)
+
+  def getLog(): Logger = {
+    if(log==null)
+      log = LoggerFactory.getLogger(this.getClass)
+
+    log
+  }
+
   def addField(doc: Document,
                fieldName: String,
                dataType: DataType,
@@ -63,7 +72,7 @@ val serializer: KryoSerializer) extends SparkLuceneConverter {
   private var dict: DictionaryManager = _
 
   def setSchema(schema: StructType): OLAPConverter = {
-    log.debug(s"schema ${schema} set for the converter")
+    getLog().debug(s"schema ${schema} set for the converter")
     this.inputSchema = schema
     this
   }
