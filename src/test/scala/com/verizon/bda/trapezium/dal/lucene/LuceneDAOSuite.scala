@@ -139,7 +139,7 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
     assert(rdd2.map(_.getAs[String](0).toString).collect.toSet == Set("123"))
   }
 
-  test("vector test") {
+  ignore("vector test") {
     val indexPath = new Path(outputPath, "vectors").toString
 
     val dimensions = Set.empty[String]
@@ -415,7 +415,7 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
   }
 
 
-  test("multivalue dimension test") {
+  ignore("multivalue dimension test") {
     val indexPath = new Path(outputPath, "multivalue").toString
     val dimensions = Set.empty[String]
     val storedDimensions = Set("zip", "tld")
@@ -437,7 +437,7 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
     assert(dao.search("*:*").count == 3)
   }
 
-  test("multivalue dimension test with null dimensions") {
+  ignore("multivalue dimension test with null dimensions") {
     val indexPath = new Path(outputPath, "multivalue").toString
     val dimensions = Set.empty[String]
     val storedDimensions = Set("zip", "tld")
@@ -520,7 +520,7 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
     assert(result2 === Array(8, 4, 18))
   }
 
-  test("null value test") {
+  ignore("null value test") {
     val dimensions = Set("zip", "tld")
     val storedDimensions = Set("user")
     val measures = Set("visits", "featureVector")
