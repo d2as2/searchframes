@@ -84,8 +84,7 @@ class StringAccessor(luceneReaders: Seq[LuceneReader],
   def extract(docID: Int, offset: Int): Any = {
     assert(offset == 0, s"string docvalue accessor non-zero offset $offset")
     val shardIndex = locate(docID)
-    val bytes = docValueReaders(shardIndex).get(docID - lower(shardIndex)).bytes
-    new String(bytes, "UTF-8")
+    docValueReaders(shardIndex).get(docID - lower(shardIndex)).utf8ToString()
   }
 }
 

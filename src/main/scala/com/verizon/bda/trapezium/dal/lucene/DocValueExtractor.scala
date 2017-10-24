@@ -18,7 +18,10 @@ class DocValueExtractor(leafReaders: Seq[LuceneReader],
   val ser = converter.ser
 
   private val dvMap: Map[String, DocValueAccessor] = if (leafReaders.length > 0) {
-    val fields = schema.filter(field => !dimensions.contains(field.name))
+    val fields = schema.filter(field => {
+      storedDimensions.contains(field.name) || measures.contains(field.name)
+    })
+
     fields.map { case (field) =>
       val fieldName = field.name
       val fieldMultiValued = (field.dataType.isInstanceOf[ArrayType])

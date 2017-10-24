@@ -1,12 +1,10 @@
 package com.verizon.bda.trapezium.dal.lucene
 
 import java.io.IOException
-
 import com.verizon.bda.trapezium.dal.exceptions.LuceneDAOException
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileStatus, FileSystem, PathFilter, Path => HadoopPath}
 import org.apache.log4j.Logger
-import org.apache.lucene.analysis.core.KeywordAnalyzer
 import org.apache.lucene.index._
 import org.apache.lucene.index.IndexWriterConfig.OpenMode
 import org.apache.lucene.store.MMapDirectory
@@ -18,20 +16,29 @@ import org.apache.spark.sql.{DataFrame, Row}
 import org.apache.spark.storage.StorageLevel
 import java.sql.Time
 import java.io.File
-
+import org.apache.lucene.analysis.core.KeywordAnalyzer
+import org.apache.lucene.analysis.standard.StandardAnalyzer
 import org.apache.spark.util.{DalUtils, RDDUtils}
-
 import scala.collection.mutable
 import scala.util.Random
 import org.apache.spark.mllib.linalg.Vectors
+import org.apache.lucene.analysis.Analyzer
 
 class LuceneDAO(val location: String,
                 val searchFields: Set[String],
                 val searchAndStoredFields: Set[String],
                 val storedFields: Set[String],
+                val luceneAnalyzer: String = "keyword",
                 storageLevel: StorageLevel = StorageLevel.DISK_ONLY) extends Serializable {
   @transient lazy val log = Logger.getLogger(classOf[LuceneDAO])
-  @transient private lazy val analyzer = new KeywordAnalyzer
+
+  @transient private lazy val analyzer : Analyzer = luceneAnalyzer match {
+    case "keyword" => new KeywordAnalyzer()
+    case "standard" => new StandardAnalyzer()
+    case _ => throw new LuceneDAOException("supported analyzers are keyword/standard")
+  }
+
+  log.info(s"Using ${luceneAnalyzer} analyzer")
 
   val PREFIX = "trapezium-lucenedao"
   val SUFFIX = "part-"
@@ -240,7 +247,7 @@ class LuceneDAO(val location: String,
               new HadoopPath(shuffleIndexPath.toString))
             val directory = new MMapDirectory(shuffleIndexPath)
             val reader = DirectoryReader.open(directory)
-            Some(LuceneShard(reader, converter))
+            Some(LuceneShard(reader, converter, analyzer))
           } catch {
             case e: IOException =>
               throw new LuceneDAOException(s"Copy from: ${hdfsPath} to local " +
@@ -329,7 +336,7 @@ class LuceneDAO(val location: String,
     val aggStart = System.nanoTime()
     agg.init(1)
     val results = shards.treeAggregate(agg)(seqOp, combOp)
-    println(f"OLAP aggragation time ${(System.nanoTime() - aggStart) * 1e-9}%6.3f sec")
+    log.info(f"OLAP aggragation time ${(System.nanoTime() - aggStart) * 1e-9}%6.3f sec")
     results.eval()(0)
   }
 
@@ -356,9 +363,9 @@ class LuceneDAO(val location: String,
 
     val conf = shards.sparkContext.getConf
     val executorAggregate = conf.get("spark.trapezium.executoraggregate", "false").toBoolean
-    println(s"executorAggregate ${executorAggregate}")
+    log.info(s"executorAggregate ${executorAggregate}")
     val depth = conf.get("spark.trapezium.aggregationdepth", "2").toInt
-    println(s"aggregation depth ${depth}")
+    log.info(s"aggregation depth ${depth}")
 
     val seqOp = (agg: OLAPAggregator,
                  shard: LuceneShard) => shard.group(
@@ -382,14 +389,14 @@ class LuceneDAO(val location: String,
           depth,
           executorId).map(_.eval().zipWithIndex)
       results.count()
-      println(f"OLAP group time ${(System.nanoTime() - groupStart) * 1e-9}%6.3f sec")
+      log.info(f"OLAP group time ${(System.nanoTime() - groupStart) * 1e-9}%6.3f sec")
       results.collect()(0)
     } else {
       val groupStart = System.nanoTime()
       // TODO: optimize on agg broadcast
       agg.init(dimSize)
       val results = shards.treeAggregate(agg)(seqOp, combOp, depth)
-      println(f"OLAP group time ${(System.nanoTime() - groupStart) * 1e-9}%6.3f sec")
+      log.info(f"OLAP group time ${(System.nanoTime() - groupStart) * 1e-9}%6.3f sec")
       results.eval().zipWithIndex
     }
 
@@ -430,7 +437,7 @@ class LuceneDAO(val location: String,
     val tsStart = System.nanoTime()
     agg.init(dimSize)
     val results = shards.treeAggregate(agg)(seqOp, combOp)
-    println(f"OLAP timeseries time ${(System.nanoTime() - tsStart) * 1e-9}%6.3f sec")
+    log.info(f"OLAP timeseries time ${(System.nanoTime() - tsStart) * 1e-9}%6.3f sec")
     results.eval
   }
 
@@ -457,7 +464,7 @@ class LuceneDAO(val location: String,
     val facetStart = System.nanoTime()
     agg.init(dimSize)
     val results = shards.treeAggregate(agg)(seqOp, combOp)
-    println(f"OLAP facet time ${(System.nanoTime() - facetStart) * 1e-9}%6.3f sec")
+    log.info(f"OLAP facet time ${(System.nanoTime() - facetStart) * 1e-9}%6.3f sec")
     val facets = results.eval().zipWithIndex
 
     val transformed = facets.map { case (value: Any, index: Int) =>

@@ -1,6 +1,6 @@
 package com.verizon.bda.trapezium.dal.lucene
 
-import org.apache.lucene.document.{Field, Document}
+import org.apache.lucene.document.{Document, Field}
 import java.util.UUID
 import org.apache.spark.SparkConf
 import org.apache.spark.mllib.linalg.VectorUDT
@@ -37,8 +37,8 @@ class OLAPConverter(val dimensions: Set[String],
                dataType: DataType,
                value: Any,
                multiValued: Boolean): Unit = {
-    // dimensions will be indexed and docvalued based on dictionary encoding
-    // measures will be docvalued
+    // dimensions will be indexed and doc-valued based on dictionary encoding
+    // measures will be doc-valued
     if (value == null) return
 
     if (dimensions.contains(fieldName)) {
@@ -51,7 +51,8 @@ class OLAPConverter(val dimensions: Set[String],
       // SingleValue and MultiValue dimension are both stored as NumericSet
       doc.add(toDocValueField(fieldName, IntegerType, true, idx))
     }
-    else if (measures.contains(fieldName)) {
+
+    if (measures.contains(fieldName)) {
       doc.add(toDocValueField(fieldName, dataType, multiValued, value))
     }
   }
@@ -102,13 +103,12 @@ class OLAPConverter(val dimensions: Set[String],
     this
   }
 
-  // Use docToRow to extract stored field since the stored fields are part of doc
+  //TODO: Implement row based document retrieval
   def docToRow(doc: Document): Row = {
     Row.empty
   }
 
   override def schema: StructType = inputSchema
-
 }
 
 object OLAPConverter {

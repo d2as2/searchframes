@@ -16,7 +16,6 @@ import java.sql.Timestamp
 
 trait SparkLuceneConverter extends SparkSQLProjections with Serializable with Logging {
 
-
   def rowToDoc(r: Row): Document
 
   def docToRow(d: Document): Row
@@ -31,9 +30,7 @@ trait SparkLuceneConverter extends SparkSQLProjections with Serializable with Lo
                      value: Any,
                      store: Field.Store): Field = {
     dataType match {
-      // String is saved as standard reverse index from search engines
-      case StringType =>
-        new StringField(name, value.asInstanceOf[String], store)
+      case StringType => new TextField(name, value.asInstanceOf[String], store)
       // On integer, long, float and double we do want to push range queries and indexing distinct
       // value makes no sense
       case IntegerType =>
@@ -92,6 +89,4 @@ trait SparkLuceneConverter extends SparkSQLProjections with Serializable with Lo
                     value: Any): Field = {
     new StoredField(name, ser.serialize(value).array())
   }
-
-
 }

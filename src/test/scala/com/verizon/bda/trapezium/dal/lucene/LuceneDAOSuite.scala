@@ -64,6 +64,7 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
     assert(idx1 >= zipRange._1 && idx1 < zipRange._2)
     assert(idx2 >= tldRange._1 && idx2 < tldRange._2)
   }
+
   //FIXME: Failing on Jenkins
   /*
   test("vectorize test") {
@@ -109,6 +110,90 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
     assert(rdd3.collect()(0) == Row.apply("123", 8))
   }
   */
+
+  test("index test with standard analyzer") {
+    val dimensions = Set("zip", "tld", "app")
+    val storedDimensions = Set.empty[String]
+    val measures = Set("user", "app", "visits")
+
+    val indexPath = new Path(outputPath, "standard").toString
+    val dao = new LuceneDAO(indexPath, dimensions, storedDimensions, measures, luceneAnalyzer = "standard")
+
+    // With coalesce > 2 partition run and 0 leafReader causes
+    // maxHits = 0 on which an assertion is thrown
+    val df = sqlContext.createDataFrame(
+      Seq(("123", "94555", Array("verizon.com", "google.com"), "Google Photos", 8),
+        ("456", "94310", Array("apple.com", "google.com"), "Instagram", 12),
+        ("678", "94538", Array("apple.com", "cnn.com"), "Google Play Books", 12),
+        ("789", "94538", Array("apple.com", "cnn.com"), "Google Play Newsstand", 12),
+        ("891", "94538", Array("apple.com", "cnn.com"), "Googler", 12)
+      ))
+      .toDF("user", "zip", "tld", "app", "visits").coalesce(2)
+
+    dao.index(df, indexTime)
+    dao.load(sc)
+
+    val rdd1 = dao.search("tld:goog*")
+    val rdd2 = dao.search("tld:veriz*")
+    val rdd3 = dao.search("app:Insta*", Seq("app"), 1.0)
+
+    assert(rdd1.count == 2)
+    assert(rdd2.count == 1)
+    assert(rdd3.count == 1)
+    assert(rdd3.collect()(0).getString(0) == "Instagram")
+
+    val rdd4 = dao.search("app:\"Google Play Books\"", Seq("app"), 1.0)
+    assert(rdd4.collect()(0).getString(0) == "Google Play Books")
+
+    val rdd5 = dao.search("app:\"Google Play\"", Seq("app"), 1.0)
+    assert(rdd5.collect().map(_.getString(0)).toSet == Set("Google Play Books", "Google Play Newsstand"))
+
+    val rdd6 = dao.search("app:Google", Seq("app"), 1.0)
+    assert(rdd6.collect().map(_.getString(0)).toSet
+      == Set("Google Photos", "Google Play Books", "Google Play Newsstand"))
+
+    val rdd7 = dao.search("app:Google*", Seq("app"), 1.0)
+    assert(rdd7.collect().map(_.getString(0)).toSet
+      == Set("Google Photos", "Google Play Books", "Google Play Newsstand", "Googler"))
+  }
+
+  test("index test with keyword analyzer") {
+    val dimensions = Set("zip", "tld", "app")
+    val storedDimensions = Set.empty[String]
+    val measures = Set("user", "app", "visits")
+
+    val indexPath = new Path(outputPath, "keyword").toString
+    val dao = new LuceneDAO(indexPath, dimensions, storedDimensions, measures)
+
+    // With coalesce > 2 partition run and 0 leafReader causes
+    // maxHits = 0 on which an assertion is thrown
+    val df = sqlContext.createDataFrame(
+      Seq(("123", "94555", Array("verizon.com", "google.com"), "Google Photos", 8),
+        ("456", "94310", Array("apple.com", "google.com"), "Instagram", 12),
+        ("678", "94538", Array("apple.com", "cnn.com"), "Google Play Books", 12),
+        ("789", "94538", Array("apple.com", "cnn.com"), "Google Play Newsstand", 12),
+        ("891", "94538", Array("apple.com", "cnn.com"), "Googler", 12)
+      ))
+      .toDF("user", "zip", "tld", "app", "visits").coalesce(2)
+
+    dao.index(df, indexTime)
+    dao.load(sc)
+
+    val rdd1 = dao.search("tld:google.com", Seq("app"), 1.0)
+    val rdd2 = dao.search("tld:verizon.com", Seq("app"), 1.0)
+    val rdd3 = dao.search("app:Instagram", Seq("app"), 1.0)
+
+    assert(rdd1.count == 2)
+    assert(rdd2.count == 1)
+    assert(rdd3.count == 1)
+    assert(rdd3.collect()(0).getString(0) == "Instagram")
+
+    val rdd4 = dao.search("app:\"Google Play Books\"", Seq("app"), 1.0)
+    assert(rdd4.collect()(0).getString(0) == "Google Play Books")
+
+    val rdd5 = dao.search("app:\"Google Play\"", Seq("app"), 1.0)
+    assert(rdd5.count == 0)
+  }
   
   test("index test") {
     val dimensions = Set.empty[String]

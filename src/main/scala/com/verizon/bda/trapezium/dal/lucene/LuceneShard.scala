@@ -8,10 +8,9 @@ import org.apache.spark.Logging
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types.TimestampType
 import java.util.BitSet
-
-import org.apache.spark.sql.catalyst.InternalRow
-
+import org.apache.lucene.analysis.standard.StandardAnalyzer
 import scala.collection.mutable.ArrayBuffer
+import org.apache.lucene.analysis.Analyzer
 
 /**
  * @author debasish83 on 12/15/16.
@@ -22,7 +21,8 @@ import scala.collection.mutable.ArrayBuffer
 case class LuceneReader(leafReader: LeafReader, range: FeatureAttr)
 
 class LuceneShard(reader: IndexReader,
-                  converter: OLAPConverter) extends IndexSearcher(reader) with Logging {
+                  converter: OLAPConverter,
+                  analyzer: Analyzer) extends IndexSearcher(reader) with Logging {
   logInfo(s"lucene shard leaf readers ${leafContexts.size}")
 
   // TODO: LeafReader > 1 are shards created by singlethreaded index writer due to flush limits
@@ -59,8 +59,9 @@ class LuceneShard(reader: IndexReader,
   })
 
   val dvExtractor = DocValueExtractor(leafReaders, converter)
-  val analyzer = new KeywordAnalyzer
-  val qp = new QueryParser("content", analyzer)
+
+  // TODO: Update "content" to a default search field
+  val qp = new QueryParser("keyword", analyzer)
 
   // Filter the time column for time series analysis
   // time column should be a measure field
@@ -284,7 +285,8 @@ class LuceneShard(reader: IndexReader,
 
 object LuceneShard {
   def apply(reader: IndexReader,
-            converter: OLAPConverter): LuceneShard = {
-    new LuceneShard(reader, converter)
+            converter: OLAPConverter,
+            analyzer: Analyzer): LuceneShard = {
+    new LuceneShard(reader, converter, analyzer)
   }
 }
