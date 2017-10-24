@@ -4,6 +4,7 @@ import java.io.InputStream
 import java.net.URI
 
 import com.jcraft.jsch.{ChannelExec, JSch, Session}
+import com.verizon.bda.trapezium.dal.exceptions.SolrOpsException
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, FileUtil, Path}
 import org.apache.log4j.Logger
@@ -12,6 +13,7 @@ import scala.collection.mutable
 import scala.collection.mutable.{ListBuffer, Map => MMap}
 import scala.collection.parallel.ForkJoinTaskSupport
 import scala.collection.parallel.mutable.ParArray
+import scala.reflect.ClassTag
 
 /**
   * Created by venkatesh on 7/10/17.
@@ -37,41 +39,58 @@ class CollectIndices {
   }
 
   def runCommand(command: String, retry: Boolean, retryCount: Int = 5): Int = {
-    var retries = retryCount
     var code = -1
-    var isRetry = false
+    var retries = retryCount
     try {
       do {
-
-        var channel: ChannelExec = null
-
-        do {
-          if (!isRetry) {
-
-            Thread.sleep(5000)
-          }
-          channel = session.openChannel("exec").asInstanceOf[ChannelExec]
-          channel.setInputStream(null)
-          channel.setCommand(command)
-          channel.connect
-          isRetry = true
-        } while (!channel.isConnected || channel == null)
+        val channel: ChannelExec = getConnectedChannel(command)
+        if (channel == null) {
+          throw new SolrOpsException(s"could not execute command: $command")
+        }
         log.info(s"running command : ${command} in ${session.getHost}" +
           s" with user ${session.getUserName}")
         val in: InputStream = channel.getInputStream
         code = printResult(in, channel)
-
-        channel.disconnect()
+        log.info(s" command : ${command} \n completed on ${session.getHost}" +
+          s" with user ${session.getUserName} with exit code:$code")
+        if (code == 0 && retries != retryCount) {
+          log.info(s" command : ${command} \n completed on ${session.getHost}" +
+            s" with user ${session.getUserName} with exit code:$code on retry")
+        }
         retries = retries - 1
-      } while (retry && code != 0 && retries > 0)
-
+      }
+      while (code != 0 && retries > 0)
     } catch {
       case e: Exception => {
-        e.printStackTrace()
+        log.warn(s"Has problem running the command :$command", e)
         return code
       }
     }
     code
+  }
+
+  def getConnectedChannel(command: String, retry: Int = 5): ChannelExec = {
+    if (retry > 0) {
+      try {
+        val channel: ChannelExec = session.openChannel("exec").asInstanceOf[ChannelExec]
+        channel.setInputStream(null)
+        channel.setCommand(command)
+        channel.connect
+        return channel
+      } catch {
+        case e: Exception => {
+          log.warn(s"Has problem opening the channel for command :$command \n" +
+            s"and retrying to open channel on ${session.getHost}", e)
+          Thread.sleep(10000)
+
+          getConnectedChannel(command, retry - 1)
+        }
+      }
+    }
+    else {
+      null
+    }
+
   }
 
   def printResult(in: InputStream, channel: ChannelExec): Int = {
@@ -125,7 +144,8 @@ object CollectIndices {
     val solrNodes = new ListBuffer[CollectIndices]
 
     val shards = coreMap.keySet.toArray
-    val sshSequence: Array[(CollectIndices, String, String, String)] = shards.map(shard => {
+    val sshSequenceMap: Map[CollectIndices,
+      Array[(CollectIndices, String, String, String)]] = shards.map(shard => {
       log.info(s"shard ${shard}")
       val tmp = shard.split("_")
       val folderPrefix = if (solrMap("folderPrefix").charAt(0) == '/') {
@@ -142,7 +162,9 @@ object CollectIndices {
         s"chmod 777 -R ${movingDirectory};"
       log.info(s"command: ${command}")
       (machine, command, partFile, shard)
-    })
+    }).groupBy(_._1)
+
+    val sshSequence = getWellDistributed(sshSequenceMap, coreMap.keySet.size)
     val command = s"mkdir ${movingDirectory}"
     machineMap.values.foreach(_.runCommand(command, false))
     val fileMap = parallelSshFire(sshSequence, movingDirectory, coreMap)
@@ -160,7 +182,7 @@ object CollectIndices {
     val pc1: ParArray[(CollectIndices, String, String, String)] =
       ParArray.createFromCopy(sshSequence)
 
-    pc1.tasksupport = new ForkJoinTaskSupport(new scala.concurrent.forkjoin.ForkJoinPool(20))
+    pc1.tasksupport = new ForkJoinTaskSupport(new scala.concurrent.forkjoin.ForkJoinPool(8))
     pc1.map(p => {
       p._1.runCommand(p._2, true)
     })
@@ -176,6 +198,37 @@ object CollectIndices {
       }
     }
     map
+  }
+
+  def getWellDistributed[A: ClassTag, B: ClassTag](map: Map[A, Array[B]], size: Int): Array[B] = {
+    val numMachines = map.keySet.size
+    val map1 = new java.util.HashMap[A, Int]
+    val lb = new ListBuffer[B]
+    val li = map.keySet.toList
+    var recordCount = 0
+    var tempcount = 0
+    var name: A = map.head._1
+    var j = 0
+    for (i <- 0 until size) {
+      j = i
+      do {
+        name = li(j % numMachines)
+        if (!map1.containsKey(name)) {
+          map1.put(name, 0)
+        }
+        tempcount = map1.get(name)
+        recordCount = map(name).size
+        j = j + 1
+      }
+      while (recordCount <= tempcount && (j - i) != numMachines)
+      if ((j - i) != numMachines) {
+        lb.append(map.get(name).get(tempcount))
+      }
+
+      map1.put(name, tempcount + 1)
+    }
+    lb.toArray
+
   }
 
   def getHdfsList(solrMap: Map[String, String], indexFilePath: String): Array[String] = {

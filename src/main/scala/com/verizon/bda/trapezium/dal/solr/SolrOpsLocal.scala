@@ -29,10 +29,13 @@ class SolrOpsLocal(solrMap: Map[String, String]) extends SolrOps(solrMap: Map[St
           s"collection.configName=${configName}&" +
           s"name=${coreName}&" +
           s"dataDir=${directory}&" +
-          s"shard=shard${id}"
+          s"shard=shard${id}&" +
+          s"wt=json&indent=true"
+
         list.append(url)
       }
     }
+    log.info(list.toList)
     SolrOps.makeHttpRequests(list.toList)
   }
 
