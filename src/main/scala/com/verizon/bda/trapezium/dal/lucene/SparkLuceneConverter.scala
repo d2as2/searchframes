@@ -1,20 +1,27 @@
 package com.verizon.bda.trapezium.dal.lucene
 
 /**
- * @author pramod.lakshminarasimha Spark Lucene Converterfor stored fields
+ * @author pramod.lakshminarasimha Spark Lucene Converterf or stored fields
  *         15 Dec 2016 debasish83 Converter for OLAP queries supporting indexed, DocValues and stored fields
  */
 
 import com.verizon.bda.trapezium.dal.exceptions.LuceneDAOException
 import org.apache.lucene.util.BytesRef
-import org.apache.spark.Logging
 import org.apache.spark.serializer.SerializerInstance
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types._
 import org.apache.lucene.document._
 import java.sql.Timestamp
 
-trait SparkLuceneConverter extends SparkSQLProjections with Serializable with Logging {
+import org.slf4j.LoggerFactory
+import org.apache.spark.ml.linalg.SQLDataTypes.VectorType
+import org.apache.spark.ml.linalg.Vector
+import org.apache.spark.sql.catalyst.InternalRow
+import org.apache.spark.util.DalUtils
+
+trait SparkLuceneConverter extends SparkSQLProjections with Serializable  {
+
+  private val log = LoggerFactory.getLogger(this.getClass)
 
   def rowToDoc(r: Row): Document
 
@@ -74,11 +81,9 @@ trait SparkLuceneConverter extends SparkSQLProjections with Serializable with Lo
         val bytes = value.asInstanceOf[Array[Byte]]
         new BinaryDocValuesField(name, new BytesRef(bytes))
       case VectorType =>
-        // Use Kryo by commenting VectorType if SparkSQLProjection does not perform well
-        // val bytes = ser.serialize(value).array()
-        val bytes = VectorProjection(VectorType.serialize(value)).getBytes
+        val bytes = VectorProjection(DalUtils.serializeVector(value.asInstanceOf[Vector])).getBytes
         new BinaryDocValuesField(name, new BytesRef(bytes))
-      case _ => logInfo(s"serializing ${dataType.typeName} as binary doc value field")
+      case _ => log.info(s"serializing ${dataType.typeName} as binary doc value field")
         val bytes = ser.serialize(value).array()
         new BinaryDocValuesField(name, new BytesRef(bytes))
     }

@@ -5,7 +5,7 @@ import com.holdenkarau.spark.testing.SharedSparkContext
 import org.apache.commons.io.FileUtils
 import org.apache.hadoop.fs.Path
 import org.apache.lucene.search.IndexSearcher
-import org.apache.spark.mllib.linalg.{Vectors, SparseVector}
+import org.apache.spark.ml.linalg.{Vectors, SparseVector}
 import org.apache.spark.sql.{Row, SQLContext}
 import org.scalatest.{BeforeAndAfterAll, FunSuite}
 import java.sql.Time
@@ -510,7 +510,7 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
 
     val df = sqlContext.createDataFrame(
       Seq(("123", Array("94555", "94301"), Array("verizon.com", "google.com"), "8", Vectors.sparse(10, Array(0, 1, 2, 3), Array(2.0, 4.0, 7.0, 9.0))),
-        ("456", Array("95014", "94301"), Array("yahoo.com", "google.com"), "2", Vectors.sparse(10, Array(4, 1, 5, 3), Array(9.0, 8.0, 2.0, 1.0))),
+        ("456", Array("95014", "94301"), Array("yahoo.com", "google.com"), "2", Vectors.sparse(10, Array(1, 3, 4, 5), Array(9.0, 8.0, 2.0, 1.0))),
         ("789", Array("94403", "94405"), Array("facebook.com", "att.com"), "3", Vectors.sparse(10, Array(6, 7, 8, 9), Array(1.0, 1.0, 6.0, 3.0)))))
       .toDF("user", "zip", "tld", "visits", "featureVector").coalesce(2)
 
@@ -532,7 +532,7 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
 
     val df = sqlContext.createDataFrame(
       Seq(("123", Array("94555", "94301"), Array("verizon.com", "google.com"), "8", Vectors.sparse(6, Array(0, 1, 2, 3), Array(2.0, 4.0, 7.0, 9.0))),
-        ("456", Array("95014", "94301"), Array("yahoo.com", "google.com"), "2", Vectors.sparse(6, Array(4, 1, 5, 3), Array(9.0, 8.0, 2.0, 1.0))),
+        ("456", Array("95014", "94301"), Array("yahoo.com", "google.com"), "2", Vectors.sparse(6, Array(1, 3 , 4, 5), Array(9.0, 8.0, 2.0, 1.0))),
         ("555", null, null, null, Vectors.sparse(0, Array(), Array()))))
       .toDF("user", "zip", "tld", "visits", "featureVector").coalesce(2)
 

@@ -1,13 +1,15 @@
 package com.verizon.bda.trapezium.dal.lucene
 
-import org.apache.lucene.document.{Document, Field}
 import java.util.UUID
+
+import org.apache.lucene.document.{Document, Field}
 import org.apache.spark.SparkConf
-import org.apache.spark.mllib.linalg.VectorUDT
 import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.sql.Row
-import org.apache.spark.sql.catalyst.expressions.{UnsafeProjection, UnsafeRow}
+import org.apache.spark.sql.catalyst.expressions.UnsafeRow
 import org.apache.spark.sql.types._
+import org.slf4j.LoggerFactory
+import org.apache.spark.util.DalUtils
 
 /**
  * @author debasish83 on 12/22/16.
@@ -16,10 +18,8 @@ import org.apache.spark.sql.types._
 
 // TODO: Given a dataframe schema create all the Projection
 trait SparkSQLProjections {
-  @transient lazy val VectorProjection = UnsafeProjection.create(VectorType.sqlType)
-
-  lazy val VectorType = new VectorUDT()
-  lazy val unsafeRow = new UnsafeRow()
+  @transient lazy val VectorProjection = DalUtils.projectVector()
+  lazy val unsafeRow = new UnsafeRow(4)
 }
 
 // Dimensions needs to be indexed, dictionary-mapped and docvalued
@@ -31,6 +31,7 @@ class OLAPConverter(val dimensions: Set[String],
                     val measures: Set[String],
                     val serializer: KryoSerializer) extends SparkLuceneConverter {
   @transient lazy val ser = serializer.newInstance()
+  @transient lazy val log = LoggerFactory.getLogger(this.getClass)
 
   def addField(doc: Document,
                fieldName: String,
@@ -62,13 +63,13 @@ class OLAPConverter(val dimensions: Set[String],
   private var dict: DictionaryManager = _
 
   def setSchema(schema: StructType): OLAPConverter = {
-    logDebug(s"schema ${schema} set for the converter")
+    log.debug(s"schema ${schema} set for the converter")
     this.inputSchema = schema
     this
   }
 
   def setDictionary(dict: DictionaryManager): OLAPConverter = {
-    logInfo(s"Setting dictionary of size ${dict.size()} for converter")
+    log.info(s"Setting dictionary of size ${dict.size()} for converter")
     this.dict = dict
     this
   }
