@@ -136,8 +136,8 @@ class ProjectionAccessor(luceneReaders: Seq[LuceneReader],
 
   override def extract(docID: Int, offset: Int): Any = {
     val bytes = extractBytes(docID, offset)
-    unsafeRow.pointTo(bytes, bytes.size)
-    DalUtils.deserializeVector(unsafeRow)
+    unsafeVector.pointTo(bytes, bytes.size)
+    DalUtils.deserializeVector(unsafeVector)
   }
 }
 

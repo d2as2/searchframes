@@ -16,7 +16,6 @@ import java.sql.Timestamp
 import org.slf4j.LoggerFactory
 import org.apache.spark.ml.linalg.SQLDataTypes.VectorType
 import org.apache.spark.ml.linalg.Vector
-import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.util.DalUtils
 
 trait SparkLuceneConverter extends SparkSQLProjections with Serializable  {

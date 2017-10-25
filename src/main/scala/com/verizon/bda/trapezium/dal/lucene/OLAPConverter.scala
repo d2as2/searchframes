@@ -19,7 +19,7 @@ import org.apache.spark.util.DalUtils
 // TODO: Given a dataframe schema create all the Projection
 trait SparkSQLProjections {
   @transient lazy val VectorProjection = DalUtils.projectVector()
-  lazy val unsafeRow = new UnsafeRow(4)
+  lazy val unsafeVector = new UnsafeRow(4)
 }
 
 // Dimensions needs to be indexed, dictionary-mapped and docvalued
