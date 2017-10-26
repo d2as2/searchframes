@@ -1,8 +1,6 @@
 package com.verizon.bda.trapezium.dal.lucene
 
 import java.io.File
-
-import com.holdenkarau.spark.testing.SharedSparkContext
 import org.apache.commons.io.FileUtils
 import org.apache.spark.mllib.util.MLlibTestSparkContext
 import org.apache.spark.sql.functions._
