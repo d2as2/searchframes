@@ -16,8 +16,7 @@
 package com.verizon.bda.trapezium.dal.sql
 
 import com.verizon.bda.trapezium.dal.exceptions.HiveDAOException
-import org.apache.spark.sql.DataFrame
-import org.apache.spark.sql.SaveMode
+import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession}
 import org.apache.spark.sql.hive.HiveContext
 import org.apache.spark.sql.types.StructType
 
@@ -29,22 +28,22 @@ import org.apache.spark.sql.types.StructType
  *
  * @param tableName name of the hive table to connect.
  */
-class HiveDAO(database: String, tableName: String)(implicit sqlContext: HiveContext)
+class HiveDAO(database: String, tableName: String)(implicit spark: SparkSession)
     extends BaseSqlDAO(database, tableName) {
 
   require(database != null && tableName != null)
 
-  sqlContext.sql(s"use ${database}")
+  spark.sqlContext.sql(s"use ${database}")
 
 
-  private def tableExists = sqlContext.tableNames(database).contains(tableName)
+  private def tableExists = spark.sqlContext.tableNames(database).contains(tableName)
 
   /**
    * The schema corresponding to the table <code>tableName</code> is returned.
    *
    * @return <code>StructType</code> containing the schema.
    */
-  override def getSchema: StructType = sqlContext.table(tableName).schema
+  override def getSchema: StructType = spark.sqlContext.table(tableName).schema
 
   /**
    * All the columns from hive table <code>tableName</code>
@@ -56,7 +55,7 @@ class HiveDAO(database: String, tableName: String)(implicit sqlContext: HiveCont
     if (!tableExists) {
       throw new HiveDAOException(s"Table ${tableName} does not exist")
     }
-    sqlContext.table(tableName)
+    spark.sqlContext.table(tableName)
   }
 
   /**
@@ -71,7 +70,7 @@ class HiveDAO(database: String, tableName: String)(implicit sqlContext: HiveCont
     }
     val sqlText = constructSql(cols)
     log.info(s"Executing query: ${sqlText}")
-    sqlContext.sql(sqlText)
+    spark.sqlContext.sql(sqlText)
   }
 
   /**
@@ -102,12 +101,11 @@ class HiveDAO(database: String, tableName: String)(implicit sqlContext: HiveCont
     if (!tableExists) {
       throw new HiveDAOException(s"Table ${tableName} does not exist")
     }
-    val dfPartitioned = switchContext(df).write.partitionBy(partitions: _*)
-    dfPartitioned.insertInto(tableName)
+    switchContext(df).write.insertInto(tableName)
   }
 
   private def switchContext(df: DataFrame): DataFrame = {
-    if (df.sqlContext == this.sqlContext) {
+    if (df.sqlContext == this.spark.sqlContext) {
       df
     } else {
       createDataFrame(df.rdd)
@@ -123,12 +121,12 @@ class HiveDAO(database: String, tableName: String)(implicit sqlContext: HiveCont
    */
   private def validateSchema(df: DataFrame): Unit = {
     val dfFields = df.schema.fields.toList
-    val tableFields = sqlContext.table(tableName).schema.fields.toList
+    val tableFields = spark.sqlContext.table(tableName).schema.fields.toList
     require((dfFields.map(_.name) == tableFields.map(_.name)) &&
       (dfFields.map(_.dataType) == tableFields.map(_.dataType)),
       s"""Schema of dataframe does not match with table schema:
       |DataFrame schema: ${df.schema} \n
-      |Table schema: ${sqlContext.table(tableName).schema}""".stripMargin)
+      |Table schema: ${spark.sqlContext.table(tableName).schema}""".stripMargin)
   }
 
   /**
@@ -140,7 +138,7 @@ class HiveDAO(database: String, tableName: String)(implicit sqlContext: HiveCont
     if (!tableExists) {
       throw new HiveDAOException(s"Table ${tableName} does not exist")
     }
-    sqlContext.sql(s"ALTER TABLE ${tableName} DROP PARTITION (${partitionSpec})")
+    spark.sqlContext.sql(s"ALTER TABLE ${tableName} DROP PARTITION (${partitionSpec})")
   }
 
   /**

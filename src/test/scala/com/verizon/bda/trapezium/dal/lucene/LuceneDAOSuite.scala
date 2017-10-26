@@ -1,19 +1,19 @@
 package com.verizon.bda.trapezium.dal.lucene
 
 import java.io.File
-import com.holdenkarau.spark.testing.SharedSparkContext
 import org.apache.commons.io.FileUtils
 import org.apache.hadoop.fs.Path
 import org.apache.lucene.search.IndexSearcher
-import org.apache.spark.ml.linalg.{Vectors, SparseVector}
+import org.apache.spark.ml.linalg.{SparseVector, Vectors}
 import org.apache.spark.sql.{Row, SQLContext}
 import org.scalatest.{BeforeAndAfterAll, FunSuite}
 import java.sql.Time
 import java.sql.Timestamp
 import com.clearspring.analytics.stream.cardinality.HyperLogLogPlus
+import org.apache.spark.mllib.util.MLlibTestSparkContext
 import org.apache.spark.sql.types._
 
-class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfterAll {
+class LuceneDAOSuite extends FunSuite with MLlibTestSparkContext with BeforeAndAfterAll {
   val outputPath = "target/luceneIndexerTest/"
   val indexTime = new Time(System.nanoTime())
 
@@ -21,9 +21,11 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
 
   override def beforeAll(): Unit = {
     super.beforeAll()
-    sqlContext = SQLContext.getOrCreate(sc)
-    conf.registerKryoClasses(Array(classOf[IndexSearcher],
-      classOf[DictionaryManager]))
+
+    sqlContext = spark.sqlContext
+    sc.getConf.registerKryoClasses(
+      Array(classOf[IndexSearcher],
+        classOf[DictionaryManager]))
     cleanup()
   }
 
