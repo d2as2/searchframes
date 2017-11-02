@@ -2,6 +2,8 @@ package com.verizon.bda.trapezium.dal.lucene
 
 import org.apache.lucene.document.{Document, Field}
 import java.util.UUID
+
+import org.apache.lucene.index.IndexableField
 import org.apache.spark.SparkConf
 import org.apache.spark.mllib.linalg.VectorUDT
 import org.apache.spark.serializer.KryoSerializer
@@ -40,7 +42,10 @@ class OLAPConverter(val dimensions: Set[String],
                multiValued: Boolean): Unit = {
     // dimensions will be indexed and doc-valued based on dictionary encoding
     // measures will be doc-valued
-    if (value == null) return
+    if (value == null) {
+      println("not indexing null values")
+      return
+    }
 
     if (dimensions.contains(fieldName)) {
       doc.add(toIndexedField(fieldName, dataType, value, stored))
@@ -110,14 +115,18 @@ class OLAPConverter(val dimensions: Set[String],
     this.columns = columns
     this
   }
-  
+
   def docToRow(doc: Document): Row = {
     if (stored == Field.Store.YES) {
       val sqlFields = dimensions.map(dim => {
         storedFields(dim) match {
           case at: ArrayType =>
-            doc.getFields(dim).map(field => fromStoredField(field, at.elementType)).toSeq
-          case dt: DataType => fromStoredField(doc.getField(dim), dt)
+            val fields = doc.getFields(dim)
+            if (fields.size > 0)
+              fields.map(field => fromStoredField(field, at.elementType)).toSeq
+          case dt: DataType =>
+            val field = doc.getField(dim)
+            if (field != null) fromStoredField(field, dt)
         }
       }).toSeq
       Row.fromSeq(sqlFields)
