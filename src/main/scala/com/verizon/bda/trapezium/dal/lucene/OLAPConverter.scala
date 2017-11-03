@@ -2,8 +2,6 @@ package com.verizon.bda.trapezium.dal.lucene
 
 import org.apache.lucene.document.{Document, Field}
 import java.util.UUID
-
-import org.apache.lucene.index.IndexableField
 import org.apache.spark.SparkConf
 import org.apache.spark.mllib.linalg.VectorUDT
 import org.apache.spark.serializer.KryoSerializer
@@ -88,8 +86,8 @@ class OLAPConverter(val dimensions: Set[String],
 
   def rowToDoc(row: Row): Document = {
     val doc = new Document()
-    // Add unique UUID for SolrCloud push
-    doc.add(toIndexedField("uuid", StringType, UUID.randomUUID().toString, Field.Store.YES))
+    // Add unique UUID for SolrCloud push and replace hyphen for StandardAnalyzer
+    doc.add(toIndexedField("uuid", StringType, UUID.randomUUID().toString.replace("-", "_"), Field.Store.YES))
     inputSchema.fields.foreach(field => {
       val fieldName = field.name
       val fieldIndex = row.fieldIndex(fieldName)
