@@ -40,10 +40,7 @@ class OLAPConverter(val dimensions: Set[String],
                multiValued: Boolean): Unit = {
     // dimensions will be indexed and doc-valued based on dictionary encoding
     // measures will be doc-valued
-    if (value == null) {
-      println("not indexing null values")
-      return
-    }
+    if (value == null) return
 
     if (dimensions.contains(fieldName)) {
       doc.add(toIndexedField(fieldName, dataType, value, stored))
