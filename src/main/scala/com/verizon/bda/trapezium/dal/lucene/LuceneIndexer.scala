@@ -38,6 +38,7 @@ class LuceneIndexer(env: String, val indexPathInput: String,
   }
 
   lazy val analyzer = new KeywordAnalyzer()
+
   var shards: RDD[IndexSearcher] = _
   var converter: SparkLuceneConverter = _
 

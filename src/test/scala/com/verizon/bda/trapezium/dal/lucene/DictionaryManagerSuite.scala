@@ -1,9 +1,8 @@
 package com.verizon.bda.trapezium.dal.lucene
 
 import java.io.File
-
-import com.holdenkarau.spark.testing.SharedSparkContext
 import org.apache.commons.io.FileUtils
+import org.apache.spark.mllib.util.MLlibTestSparkContext
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.{ArrayType, StringType, StructField, StructType}
 import org.apache.spark.sql.{DataFrame, Row, SQLContext}
@@ -12,7 +11,7 @@ import org.scalatest.{BeforeAndAfterAll, FunSuite}
 /**
   * Created by pramod.lakshminarasimha on 8/10/16.
   */
-class DictionaryManagerSuite extends FunSuite with SharedSparkContext with BeforeAndAfterAll {
+class DictionaryManagerSuite extends FunSuite with MLlibTestSparkContext with BeforeAndAfterAll {
 
   val outputPath = "target/dictionary"
 
@@ -32,7 +31,7 @@ class DictionaryManagerSuite extends FunSuite with SharedSparkContext with Befor
     super.afterAll()
   }
 
-  lazy val sqlContext = SQLContext.getOrCreate(sc)
+  lazy val sqlContext = spark.sqlContext
 
   lazy val df: DataFrame = sqlContext.createDataFrame(
     sc.parallelize(Seq(Row("s1", Array("tld1", "tld2"), Array("zip1", "zip2")),

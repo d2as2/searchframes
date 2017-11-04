@@ -12,24 +12,21 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 */
-/**
- * Copyright (C) Verizon Corp.
- */
 package com.verizon.bda.trapezium.dal.sql
 
 import com.verizon.bda.trapezium.dal.data.Data
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.types.StructType
-import org.apache.spark.sql.{ Row, SQLContext, DataFrame }
+import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 
 /**
  * @author Ken on 11/14/15.
  *         debasish83 17 Sept, 2016 BaseSqlDAO serializable for HiveDAO, CassandraDAO
  *         and LuceneDAO can be used inside DStream transformations
  */
-abstract class BaseSqlDAO(dbName: String, tableName: String)(implicit sqlContext: SQLContext)
+abstract class BaseSqlDAO(dbName: String, tableName: String)(implicit spark: SparkSession)
     extends Data[DataFrame] with Serializable {
-  require(null != dbName && null != tableName && null != sqlContext)
+  require(null != dbName && null != tableName && null != spark.sqlContext)
 
   /**
    * This function creates a data frame according to the schema from the
@@ -38,7 +35,7 @@ abstract class BaseSqlDAO(dbName: String, tableName: String)(implicit sqlContext
    * @param data <code>RDD[Row]</code> will be wrapped in <code>DataFrame</code>
    */
   final def createDataFrame(data: RDD[Row]): DataFrame = {
-    sqlContext.createDataFrame(data, getSchema)
+    spark.sqlContext.createDataFrame(data, getSchema)
   }
 
   /**

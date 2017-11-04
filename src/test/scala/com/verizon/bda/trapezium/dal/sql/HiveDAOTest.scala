@@ -19,30 +19,32 @@ package com.verizon.bda.trapezium.dal.sql
 
 import org.apache.spark.mllib.util.MLlibTestSparkContext
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.DataFrame
-import org.apache.spark.sql.Row
-import org.apache.spark.sql.SQLContext
 import org.apache.spark.sql.catalyst.expressions.GenericRow
 import org.apache.spark.sql.hive.HiveContext
 import org.apache.spark.sql.hive.test.TestHiveContext
-import org.apache.spark.sql.types.IntegerType
-import org.apache.spark.sql.types.StringType
-import org.apache.spark.sql.types.StructField
-import org.apache.spark.sql.types.StructType
-import org.scalatest.Finders
-import org.scalatest.FunSuite
+import org.apache.spark.sql.types.{IntegerType, StringType, StructField, StructType}
+import org.apache.spark.sql.{DataFrame, Row, SQLContext, SparkSession}
+import org.scalatest.{FunSuite, Ignore}
 
 /**
  * @author pramod.lakshminarasimha
- */
+  *
+  *         The HIVE Dao module is going to removed soon
+  **/
 class HiveDAOTest extends FunSuite with MLlibTestSparkContext {
-  @transient implicit var hiveContext: HiveContext = _
+  @transient implicit var hiveContext: TestHiveContext = _
   @transient var testdf: DataFrame = _
 
   override def beforeAll() {
     super.beforeAll()
-    hiveContext = new TestHiveContext(sc)
-    hiveContext.setConf("hive.exec.dynamic.partition.mode", "nonstrict")
+
+    spark = SparkSession.builder.
+      master("local")
+      .appName("HiveTest")
+      .enableHiveSupport()
+      .getOrCreate()
+
+    sc = spark.sparkContext
 
     val rdd: RDD[Row] = sc.parallelize(
       (1 to 10).map(x => new GenericRow(Array("a" + x, "b", x))).toList
@@ -51,17 +53,21 @@ class HiveDAOTest extends FunSuite with MLlibTestSparkContext {
       StructField("c1", StringType, true),
       StructField("c2", StringType, true),
       StructField("c3", IntegerType, true)))
+
+    hiveContext = new TestHiveContext(sc, false)
+    hiveContext.setConf("hive.exec.dynamic.partition.mode", "nonstrict")
+
     testdf = hiveContext.createDataFrame(rdd, schema)
-    testdf.registerTempTable("test_read")
+    testdf.createOrReplaceTempView("test_read")
   }
 
   override def afterAll() {
-    hiveContext.asInstanceOf[TestHiveContext].reset()
+    hiveContext.reset()
     super.afterAll()
   }
 
   test("HiveDAO read test") {
-    val testDao = new HiveDAO("default", "test_read")
+    val testDao = new HiveDAO("default", "test_read")(hiveContext.sparkSession)
 
     assert(testDao.getAll().count == 20)
     assert(testDao.getColumns(List("c1")).count == 20)
@@ -71,7 +77,7 @@ class HiveDAOTest extends FunSuite with MLlibTestSparkContext {
     val tableName = "test_write_partitioned"
     hiveContext.sql(s"""create table if not exists ${tableName}
                   (c1 string) partitioned by (c2 string, c3 int)""")
-    val testDao = new HiveDAO("default", tableName)
+    val testDao = new HiveDAO("default", tableName)(hiveContext.sparkSession)
 
     testDao.write(testdf, Seq("c2", "c3"))
     assert(hiveContext.table(tableName).count() == 20)
@@ -86,7 +92,7 @@ class HiveDAOTest extends FunSuite with MLlibTestSparkContext {
 
   test("HiveDAO delete partitions test") {
     val tableName = "test_delete_partitions"
-    val testDao = new HiveDAO("default", tableName)
+    val testDao = new HiveDAO("default", tableName)(hiveContext.sparkSession)
 
     hiveContext.sql(s"""create table if not exists ${tableName}
                   (c1 string) partitioned by (c2 string, c3 int)""")
@@ -106,7 +112,7 @@ class HiveDAOTest extends FunSuite with MLlibTestSparkContext {
 
   test("Switch context test") {
     val tableName = "test_switch_context"
-    val newSqlContext = new SQLContext(sc)
+    val newSqlContext = spark.sqlContext
     val schema =
       StructType(
         StructField("name", StringType, false) ::
@@ -117,11 +123,11 @@ class HiveDAOTest extends FunSuite with MLlibTestSparkContext {
         _.split(",")).map(p => Row(p(0), p(1).trim.toInt))
 
     val dataFrame = newSqlContext.createDataFrame(people, schema)
+    dataFrame.createOrReplaceTempView(tableName)
 
-    dataFrame.registerTempTable(tableName)
     val testsqldf = newSqlContext.table(tableName)
     hiveContext.sql(s"create table if not exists ${tableName} (name string, age int)")
-    val testDao = new HiveDAO("default", tableName)(hiveContext)
+    val testDao = new HiveDAO("default", tableName)(hiveContext.sparkSession)
     testDao.write(testsqldf)
     assert(hiveContext.tableNames().contains(tableName) && testDao.getAll().count() == 2)
     hiveContext.sql(s"drop table ${tableName}")
