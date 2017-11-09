@@ -27,6 +27,7 @@ trait SparkSQLProjections {
 // The types on dimension and measures must be SparkSQL compatible
 // Dimensions are a subset of types.keySet
 class OLAPConverter(val dimensions: Set[String],
+                    val stored: Field.Store,
                     val storedDimensions: Set[String],
                     val measures: Set[String],
                     val serializer: KryoSerializer) extends SparkLuceneConverter {
@@ -41,9 +42,9 @@ class OLAPConverter(val dimensions: Set[String],
     // dimensions will be indexed and doc-valued based on dictionary encoding
     // measures will be doc-valued
     if (value == null) return
-
+    
     if (dimensions.contains(fieldName)) {
-      doc.add(toIndexedField(fieldName, dataType, value, Field.Store.NO))
+      doc.add(toIndexedField(fieldName, dataType, value, stored))
     } else if (storedDimensions.contains(fieldName)) {
       doc.add(toIndexedField(fieldName, dataType, value, Field.Store.NO))
       // Dictionary encoding on dimension doc values
@@ -60,11 +61,18 @@ class OLAPConverter(val dimensions: Set[String],
 
   private var inputSchema: StructType = _
 
+  private var storedFields: Map[String, DataType] = _
+
   private var dict: DictionaryManager = _
 
   def setSchema(schema: StructType): OLAPConverter = {
     log.debug(s"schema ${schema} set for the converter")
     this.inputSchema = schema
+    storedFields = schema.filter(field => {
+      dimensions.contains(field.name)
+    }).map(field => {
+      (field.name, field.dataType)
+    }).toMap
     this
   }
 
@@ -76,8 +84,8 @@ class OLAPConverter(val dimensions: Set[String],
 
   def rowToDoc(row: Row): Document = {
     val doc = new Document()
-    // Add unique UUID for SolrCloud push
-    doc.add(toIndexedField("uuid", StringType, UUID.randomUUID().toString, Field.Store.YES))
+    // Add unique UUID for SolrCloud push and replace hyphen for StandardAnalyzer
+    doc.add(toIndexedField("uuid", StringType, UUID.randomUUID().toString.replace("-", "_"), Field.Store.YES))
     inputSchema.fields.foreach(field => {
       val fieldName = field.name
       val fieldIndex = row.fieldIndex(fieldName)
@@ -104,9 +112,23 @@ class OLAPConverter(val dimensions: Set[String],
     this
   }
 
-  //TODO: Implement row based document retrieval
   def docToRow(doc: Document): Row = {
-    Row.empty
+    if (stored == Field.Store.YES) {
+      val sqlFields = dimensions.map(dim => {
+        storedFields(dim) match {
+          case at: ArrayType =>
+            val fields = doc.getFields(dim)
+            if (fields.size > 0)
+              fields.map(field => fromStoredField(field, at.elementType)).toSeq
+          case dt: DataType =>
+            val field = doc.getField(dim)
+            if (field != null) fromStoredField(field, dt)
+        }
+      }).toSeq
+      Row.fromSeq(sqlFields)
+    } else {
+      Row.empty
+    }
   }
 
   override def schema: StructType = inputSchema
@@ -114,9 +136,10 @@ class OLAPConverter(val dimensions: Set[String],
 
 object OLAPConverter {
   def apply(dimensions: Set[String],
+            stored: Field.Store,
             storedDimensions: Set[String],
             measures: Set[String]): OLAPConverter = {
     val ser = new KryoSerializer(new SparkConf())
-    new OLAPConverter(dimensions, storedDimensions, measures, ser)
+    new OLAPConverter(dimensions, stored, storedDimensions, measures, ser)
   }
 }

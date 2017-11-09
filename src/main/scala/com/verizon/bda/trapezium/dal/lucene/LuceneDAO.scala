@@ -1,6 +1,7 @@
 package com.verizon.bda.trapezium.dal.lucene
 
 import java.io.IOException
+
 import com.verizon.bda.trapezium.dal.exceptions.LuceneDAOException
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileStatus, FileSystem, PathFilter, Path => HadoopPath}
@@ -23,12 +24,14 @@ import scala.collection.mutable
 import scala.util.Random
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.lucene.analysis.Analyzer
+import org.apache.lucene.document.Field
 
 class LuceneDAO(val location: String,
                 val searchFields: Set[String],
                 val searchAndStoredFields: Set[String],
                 val storedFields: Set[String],
                 val luceneAnalyzer: String = "keyword",
+                val stored: Boolean = false,
                 storageLevel: StorageLevel = StorageLevel.DISK_ONLY) extends Serializable {
   @transient lazy val log = Logger.getLogger(classOf[LuceneDAO])
 
@@ -37,6 +40,10 @@ class LuceneDAO(val location: String,
     case "standard" => new StandardAnalyzer()
     case _ => throw new LuceneDAOException("supported analyzers are keyword/standard")
   }
+
+  @transient private val store: Field.Store =
+    if (stored) Field.Store.YES
+    else Field.Store.NO
 
   log.info(s"Using ${luceneAnalyzer} analyzer")
 
@@ -49,7 +56,7 @@ class LuceneDAO(val location: String,
   val DICTIONARY_PREFIX = "dictionary"
   val SCHEMA_PREFIX = "schema"
 
-  val converter = OLAPConverter(searchFields, searchAndStoredFields, storedFields)
+  val converter = OLAPConverter(searchFields, store, searchAndStoredFields, storedFields)
   private var _dictionary: DictionaryManager = _
 
   def encodeDictionary(df: DataFrame): LuceneDAO = {

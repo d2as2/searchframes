@@ -113,6 +113,55 @@ class LuceneDAOSuite extends FunSuite with MLlibTestSparkContext with BeforeAndA
   }
   */
 
+  test("index test with standard analyzer and stored fields") {
+    val dimensions = Set("tld", "app")
+    val storedDimensions = Set.empty[String]
+    val measures = Set("user", "visits")
+
+    val indexPath = new Path(outputPath, "stored").toString
+    val dao = new LuceneDAO(indexPath, dimensions, storedDimensions, measures,
+      luceneAnalyzer = "standard", stored = true)
+
+    // With coalesce > 2 partition run and 0 leafReader causes
+    // maxHits = 0 on which an assertion is thrown
+    val df = sqlContext.createDataFrame(
+      Seq(("123", Array("verizon.com", "google.com"), "Google Photos", 8),
+        ("456", Array("apple.com", "google.com"), "Instagram", 12),
+        ("678", Array("apple.com", "cnn.com"), "Google Play Books", 12),
+        ("789", Array("apple.com", "cnn.com"), "Google Play Newsstand", 12),
+        ("891", Array("apple.com", "cnn.com"), "Googler", 12)
+      ))
+      .toDF("user", "tld", "app", "visits").coalesce(2)
+
+    dao.index(df, indexTime)
+    dao.load(sc)
+
+    val rdd1 = dao.search("tld:goog*")
+    val rdd2 = dao.search("tld:veriz*")
+    val rdd3 = dao.search("app:Insta*", Seq("user"), 1.0)
+
+    assert(rdd1.count == 2)
+    assert(rdd2.count == 1)
+    assert(rdd3.count == 1)
+
+    assert(rdd3.collect()(0).getString(1) == "Instagram")
+
+    val rdd4 = dao.search("app:\"Google Play Books\"", Seq("user"), 1.0)
+    assert(rdd4.collect()(0).getSeq[String](0) == Seq("apple.com", "cnn.com"))
+    assert(rdd4.collect()(0).getString(1) == "Google Play Books")
+
+    val rdd5 = dao.search("app:\"Google Play\"", Seq("user"), 1.0)
+    assert(rdd5.collect().map(_.getString(1)).toSet == Set("Google Play Books", "Google Play Newsstand"))
+
+    val rdd6 = dao.search("app:Google", Seq("user"), 1.0)
+    assert(rdd6.collect().map(_.getString(1)).toSet
+      == Set("Google Photos", "Google Play Books", "Google Play Newsstand"))
+
+    val rdd7 = dao.search("app:Google*", Seq("user"), 1.0)
+    assert(rdd7.collect().map(_.getString(1)).toSet
+      == Set("Google Photos", "Google Play Books", "Google Play Newsstand", "Googler"))
+  }
+
   test("index test with standard analyzer") {
     val dimensions = Set("zip", "tld", "app")
     val storedDimensions = Set.empty[String]
@@ -142,6 +191,7 @@ class LuceneDAOSuite extends FunSuite with MLlibTestSparkContext with BeforeAndA
     assert(rdd1.count == 2)
     assert(rdd2.count == 1)
     assert(rdd3.count == 1)
+
     assert(rdd3.collect()(0).getString(0) == "Instagram")
 
     val rdd4 = dao.search("app:\"Google Play Books\"", Seq("app"), 1.0)

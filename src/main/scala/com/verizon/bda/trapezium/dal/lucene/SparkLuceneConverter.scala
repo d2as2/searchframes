@@ -12,7 +12,7 @@ import org.apache.spark.sql.Row
 import org.apache.spark.sql.types._
 import org.apache.lucene.document._
 import java.sql.Timestamp
-
+import org.apache.lucene.index.IndexableField
 import org.slf4j.LoggerFactory
 import org.apache.spark.ml.linalg.SQLDataTypes.VectorType
 import org.apache.spark.ml.linalg.Vector
@@ -88,9 +88,16 @@ trait SparkLuceneConverter extends SparkSQLProjections with Serializable  {
     }
   }
 
-  def toStoredField(name: String,
-                    dataType: DataType,
-                    value: Any): Field = {
-    new StoredField(name, ser.serialize(value).array())
+  def fromStoredField(field: IndexableField,
+                      dataType: DataType) : Any = {
+    dataType match {
+      case StringType => field.stringValue()
+      case IntegerType => field.numericValue().intValue()
+      case LongType => field.numericValue().longValue()
+      case FloatType => field.numericValue().floatValue()
+      case DoubleType => field.numericValue().doubleValue()
+      case _ =>
+        throw new LuceneDAOException(s"unsupported sparksql ${dataType} from indexed field")
+    }
   }
 }
