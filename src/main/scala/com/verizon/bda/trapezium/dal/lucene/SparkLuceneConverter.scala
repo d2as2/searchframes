@@ -35,16 +35,11 @@ trait SparkLuceneConverter extends SparkSQLProjections with Serializable with Lo
       case StringType => new TextField(name, value.asInstanceOf[String], store)
       // On integer, long, float and double we do want to push range queries and indexing distinct
       // value makes no sense
-      case IntegerType =>
-        new IntPoint(name, value.asInstanceOf[Int])
-      case LongType =>
-        new LongPoint(name, value.asInstanceOf[Long])
-      case FloatType =>
-        new FloatPoint(name, value.asInstanceOf[Float])
-      case DoubleType =>
-        new DoublePoint(name, value.asInstanceOf[Double])
-      case _ =>
-        throw new LuceneDAOException(s"unsupported sparksql ${dataType} for indexed field")
+      case IntegerType => new LegacyIntField(name, value.asInstanceOf[Int], store)
+      case LongType => new LegacyLongField(name, value.asInstanceOf[Long], store)
+      case FloatType => new LegacyFloatField(name, value.asInstanceOf[Float], store)
+      case DoubleType => new LegacyDoubleField(name, value.asInstanceOf[Double], store)
+      case _ => throw new LuceneDAOException(s"unsupported sparksql ${dataType} for indexed field")
     }
   }
 
