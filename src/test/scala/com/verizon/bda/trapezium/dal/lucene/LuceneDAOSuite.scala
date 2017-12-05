@@ -28,7 +28,7 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
   }
 
   override def afterAll(): Unit = {
-    cleanup()
+    //cleanup()
     super.afterAll()
   }
 
@@ -141,7 +141,6 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
 
     dao.merge(sc, new Path(outputPath, "postmerge").toString, 1)
 
-    /*
     val daoMerge = new LuceneDAO(outputPath, dimensions, storedDimensions, measures)
     daoMerge.load(sc)
 
@@ -153,7 +152,6 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
 
     assert(rdd3.map(_.getAs[String](0).toString).collect.toSet == Set("123", "456"))
     assert(rdd4.map(_.getAs[String](0).toString).collect.toSet == Set("123"))
-    */
   }
 
   test("index test with standard analyzer and stored fields") {

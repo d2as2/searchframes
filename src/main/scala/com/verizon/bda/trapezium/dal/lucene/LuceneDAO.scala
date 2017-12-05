@@ -1,13 +1,13 @@
 package com.verizon.bda.trapezium.dal.lucene
 
 import java.io.IOException
+
 import com.verizon.bda.trapezium.dal.exceptions.LuceneDAOException
 import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.fs.{FileStatus, FileSystem, PathFilter, Path => HadoopPath}
+import org.apache.hadoop.fs.{FileStatus, FileSystem, FileUtil, PathFilter, Path => HadoopPath}
 import org.apache.log4j.Logger
 import org.apache.lucene.index._
 import org.apache.lucene.index.IndexWriterConfig.OpenMode
-import org.apache.lucene.store.MMapDirectory
 import org.apache.spark.sql.types.{ArrayType, StructField, StructType}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.rdd.RDD
@@ -16,15 +16,19 @@ import org.apache.spark.sql.{DataFrame, Row}
 import org.apache.spark.storage.StorageLevel
 import java.sql.Time
 import java.io.File
+
 import org.apache.lucene.analysis.core.KeywordAnalyzer
 import org.apache.lucene.analysis.standard.StandardAnalyzer
 import org.apache.spark.util.{DalUtils, RDDUtils}
+
 import scala.collection.mutable
 import scala.util.Random
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.lucene.analysis.Analyzer
 import org.apache.lucene.document.Field
-import org.apache.lucene.store.{Directory, HardlinkCopyDirectoryWrapper, MMapDirectory}
+import org.apache.lucene.store.{Directory, MMapDirectory}
+import org.apache.solr.store.hdfs.HdfsDirectory
+import java.nio.file.Paths
 
 class LuceneDAO(val location: String,
                 val searchFields: Set[String],
@@ -209,19 +213,73 @@ class LuceneDAO(val location: String,
   // TODO: load logic will move to LuceneRDD
   @transient private var _shards: RDD[LuceneShard] = _
 
+  /**
+    * @param sc
+    * @param outputPath desired outpath of merged shards
+    * @param numShards total shards
+    */
+  def merge(sc: SparkContext,
+            outputPath: String,
+            numShards: Int): Unit = {
+    val indexPath = location.stripSuffix("/") + "/" + INDICES_PREFIX
+    val indexDir = new HadoopPath(indexPath)
+    val fs = FileSystem.get(indexDir.toUri, sc.hadoopConfiguration)
+
+    val dictionaryPath = location.stripSuffix("/") + "/" + DICTIONARY_PREFIX
+    val schemaPath = location.stripSuffix("/") + "/" + SCHEMA_PREFIX
+
+    val files: Seq[String] = fs.listStatus(indexDir, new PathFilter {
+      override def accept(path: HadoopPath): Boolean = {
+        path.getName.startsWith(SUFFIX)
+      }
+    }).map(status => s"${status.getPath.toString}/${INDEX_PREFIX}")
+
+    sc.parallelize(files, numShards).mapPartitionsWithIndex((partition, fileIterator) => {
+      val mergePath = outputPath.stripSuffix("/") + "/" + s"${SUFFIX}${partition}" + "/" + INDEX_PREFIX
+      val conf = new Configuration
+
+      val mergedIndex = new HdfsDirectory(new HadoopPath(mergePath), conf)
+      val writer = new IndexWriter(mergedIndex, new IndexWriterConfig(null).setOpenMode(OpenMode.CREATE))
+      val files = fileIterator.toArray
+      val indexes = new Array[Directory](files.length)
+
+      var i = 0
+      while (i < files.length) {
+        val fileName = files(i)
+        println(s"fileName: ${fileName} partition ${partition}")
+        println(Paths.get(fileName))
+        indexes(i) = new HdfsDirectory(new HadoopPath(fileName), conf)
+        i += 1
+      }
+
+      writer.addIndexes(indexes: _*)
+      writer.forceMerge(1)
+      writer.close()
+      Iterator.empty
+    }).count()
+
+    val outputDictionaryPath = new HadoopPath(outputPath.stripSuffix("/") + "/" + DICTIONARY_PREFIX)
+    val outputSchemaPath = new HadoopPath(outputPath.stripSuffix("/") + "/" + SCHEMA_PREFIX)
+
+    //TODO: Add exception handling for the FileUtil copy
+    FileUtil.copy(fs, new HadoopPath(dictionaryPath), fs, outputDictionaryPath, false, sc.hadoopConfiguration)
+    FileUtil.copy(fs, new HadoopPath(schemaPath), fs, outputSchemaPath, false, sc.hadoopConfiguration)
+  }
+
   def load(sc: SparkContext): Unit = {
     val indexPath = location.stripSuffix("/") + "/" + INDICES_PREFIX
     val dictionaryPath = location.stripSuffix("/") + "/" + DICTIONARY_PREFIX
     val schemaPath = location.stripSuffix("/") + "/" + SCHEMA_PREFIX
 
     // load the schema object into RDD
-    val schemaRDD = sc.objectFile(schemaPath).map{x: Any => x.asInstanceOf[StructField]}
+    val schemaRDD = sc.objectFile(schemaPath).map { x: Any => x.asInstanceOf[StructField] }
     val schema = StructType(schemaRDD.collect)
 
     converter.setSchema(schema)
 
     val indexDir = new HadoopPath(indexPath)
     val fs = FileSystem.get(indexDir.toUri, sc.hadoopConfiguration)
+
     val status: Array[FileStatus] = fs.listStatus(indexDir, new PathFilter {
       override def accept(path: HadoopPath): Boolean = {
         path.getName.startsWith(SUFFIX)
@@ -273,55 +331,6 @@ class LuceneDAO(val location: String,
 
     _dictionary.load(dictionaryPath)(sc)
     log.info(s"dictionary stats ${_dictionary}")
-  }
-
-
-  import org.apache.lucene.store.FSDirectory
-  import java.nio.file.Paths
-  /**
-    * @param sc
-    * @param outputPath desired outpath of merged shards
-    * @param numShards total shards
-    */
-  def merge(sc: SparkContext,
-            outputPath: String,
-            numShards: Int): Unit = {
-    // 1. Read the part files from location/INDICES_PREFIX and
-    // then get all the names of the part files
-    val indexPath = location.stripSuffix("/") + "/" + INDICES_PREFIX
-    val indexDir = new HadoopPath(indexPath)
-    val fs = FileSystem.get(indexDir.toUri, sc.hadoopConfiguration)
-
-    val status: Seq[String] = fs.listStatus(indexDir, new PathFilter {
-      override def accept(path: HadoopPath): Boolean = {
-        path.getName.startsWith(SUFFIX)
-      }
-    }).map(_.getPath.toString)
-
-    println("FILE STATUS")
-    status.foreach(println(_))
-
-    sc.parallelize(status, numShards).mapPartitionsWithIndex((partition, fileIterator) => {
-      val mergePath = outputPath.stripSuffix("/") + "/" + s"part-${partition}"
-      val mergedIndex = FSDirectory.open(Paths.get(mergePath))
-      val writer = new IndexWriter(mergedIndex, new IndexWriterConfig(null).setOpenMode(OpenMode.CREATE))
-      val files = fileIterator.toArray
-      val indexes = new Array[Directory](files.length)
-
-      var i = 0
-      while(i < files.length) {
-        val fileName = files(i)
-        println(s"fileName: ${fileName} partition ${partition}")
-        indexes(i) = new HardlinkCopyDirectoryWrapper(FSDirectory
-          .open(Paths.get(fileName)))
-        i += 1
-      }
-
-      writer.addIndexes(indexes: _*)
-      writer.commit()
-      writer.close()
-      Iterator.empty
-    }).count()
   }
 
   def shards(): RDD[LuceneShard] = _shards
