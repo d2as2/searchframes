@@ -240,8 +240,6 @@ class LuceneDAO(val location: String,
       var i = 0
       while (i < files.length) {
         val fileName = files(i)
-        println(s"fileName: ${fileName} partition ${partition}")
-        println(Paths.get(fileName))
         indexes(i) = new HdfsDirectory(new HadoopPath(fileName), conf)
         i += 1
       }
