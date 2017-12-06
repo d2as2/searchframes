@@ -25,9 +25,9 @@ import scala.util.Random
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.lucene.analysis.Analyzer
 import org.apache.lucene.document.Field
-import org.apache.lucene.store.{Directory, MMapDirectory}
+import org.apache.lucene.store.{Directory, MMapDirectory, NoLockFactory}
 import org.apache.solr.store.hdfs.HdfsDirectory
-import java.nio.file.Paths
+import org.apache.lucene.store.LockFactory
 
 class LuceneDAO(val location: String,
                 val searchFields: Set[String],
@@ -232,15 +232,24 @@ class LuceneDAO(val location: String,
       val mergePath = mergePathPrefix + s"${SUFFIX}${partition}" + "/" + INDEX_PREFIX
       val conf = new Configuration
 
-      val mergedIndex = new HdfsDirectory(new HadoopPath(mergePath), conf)
-      val writer = new IndexWriter(mergedIndex, new IndexWriterConfig(null).setOpenMode(OpenMode.CREATE))
+      val mergedIndex =
+        new HdfsDirectory(new HadoopPath(mergePath),
+          NoLockFactory.INSTANCE.asInstanceOf[LockFactory],
+          conf, 4096)
+
+      val writerConfig = new IndexWriterConfig().setOpenMode(OpenMode.CREATE)
+
+      val writer = new IndexWriter(mergedIndex, writerConfig)
+
       val files = fileIterator.toArray
       val indexes = new Array[Directory](files.length)
 
       var i = 0
       while (i < files.length) {
         val fileName = files(i)
-        indexes(i) = new HdfsDirectory(new HadoopPath(fileName), conf)
+        indexes(i) = new HdfsDirectory(new HadoopPath(fileName),
+          NoLockFactory.INSTANCE.asInstanceOf[LockFactory],
+          conf, 4096)
         i += 1
       }
 
@@ -255,7 +264,6 @@ class LuceneDAO(val location: String,
 
     FileUtil.copy(new File(dictionaryPath), fs, outputDictionaryPath, false, sc.hadoopConfiguration)
     FileUtil.copy(new File(schemaPath), fs, outputSchemaPath, false, sc.hadoopConfiguration)
-
   }
 
   def load(sc: SparkContext): Unit = {
