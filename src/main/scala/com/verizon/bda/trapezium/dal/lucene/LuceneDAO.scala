@@ -1,6 +1,6 @@
 package com.verizon.bda.trapezium.dal.lucene
 
-import java.io.IOException
+import java.io._
 
 import com.verizon.bda.trapezium.dal.exceptions.LuceneDAOException
 import org.apache.hadoop.conf.Configuration
@@ -15,7 +15,6 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{DataFrame, Row}
 import org.apache.spark.storage.StorageLevel
 import java.sql.Time
-import java.io.File
 
 import org.apache.lucene.analysis.core.KeywordAnalyzer
 import org.apache.lucene.analysis.standard.StandardAnalyzer
@@ -37,6 +36,8 @@ class LuceneDAO(val location: String,
                 val luceneAnalyzer: String = "keyword",
                 val stored: Boolean = false,
                 storageLevel: StorageLevel = StorageLevel.DISK_ONLY) extends Serializable {
+  import LuceneDAO._
+
   @transient lazy val log = Logger.getLogger(classOf[LuceneDAO])
 
   @transient private lazy val analyzer : Analyzer = luceneAnalyzer match {
@@ -50,15 +51,6 @@ class LuceneDAO(val location: String,
     else Field.Store.NO
 
   log.info(s"Using ${luceneAnalyzer} analyzer")
-
-  val PREFIX = "trapezium-lucenedao"
-  val SUFFIX = "part-"
-
-  val INDICES_PREFIX = "indices"
-  val INDEX_PREFIX = "index"
-
-  val DICTIONARY_PREFIX = "dictionary"
-  val SCHEMA_PREFIX = "schema"
 
   val converter = OLAPConverter(searchFields, store, searchAndStoredFields, storedFields)
   private var _dictionary: DictionaryManager = _
@@ -234,8 +226,10 @@ class LuceneDAO(val location: String,
       }
     }).map(status => s"${status.getPath.toString}/${INDEX_PREFIX}")
 
+    val mergePathPrefix = outputPath.stripSuffix("/") + "/" + INDICES_PREFIX + "/"
+
     sc.parallelize(files, numShards).mapPartitionsWithIndex((partition, fileIterator) => {
-      val mergePath = outputPath.stripSuffix("/") + "/" + s"${SUFFIX}${partition}" + "/" + INDEX_PREFIX
+      val mergePath = mergePathPrefix + s"${SUFFIX}${partition}" + "/" + INDEX_PREFIX
       val conf = new Configuration
 
       val mergedIndex = new HdfsDirectory(new HadoopPath(mergePath), conf)
@@ -261,9 +255,9 @@ class LuceneDAO(val location: String,
     val outputDictionaryPath = new HadoopPath(outputPath.stripSuffix("/") + "/" + DICTIONARY_PREFIX)
     val outputSchemaPath = new HadoopPath(outputPath.stripSuffix("/") + "/" + SCHEMA_PREFIX)
 
-    //TODO: Add exception handling for the FileUtil copy
-    FileUtil.copy(fs, new HadoopPath(dictionaryPath), fs, outputDictionaryPath, false, sc.hadoopConfiguration)
-    FileUtil.copy(fs, new HadoopPath(schemaPath), fs, outputSchemaPath, false, sc.hadoopConfiguration)
+    FileUtil.copy(new File(dictionaryPath), fs, outputDictionaryPath, false, sc.hadoopConfiguration)
+    FileUtil.copy(new File(schemaPath), fs, outputSchemaPath, false, sc.hadoopConfiguration)
+
   }
 
   def load(sc: SparkContext): Unit = {
@@ -537,4 +531,17 @@ class LuceneDAO(val location: String,
     }.toMap
     transformed
   }
+}
+
+object LuceneDAO {
+
+  val PREFIX = "trapezium-lucenedao"
+  val SUFFIX = "part-"
+
+  val INDICES_PREFIX = "indices"
+  val INDEX_PREFIX = "index"
+
+  val DICTIONARY_PREFIX = "dictionary"
+  val SCHEMA_PREFIX = "schema"
+
 }

@@ -1,16 +1,19 @@
 package com.verizon.bda.trapezium.dal.lucene
 
 import java.io.File
+
 import com.holdenkarau.spark.testing.SharedSparkContext
 import org.apache.commons.io.FileUtils
-import org.apache.hadoop.fs.Path
+import org.apache.hadoop.fs.{FileStatus, FileSystem, Path, PathFilter}
 import org.apache.lucene.search.IndexSearcher
-import org.apache.spark.mllib.linalg.{Vectors, SparseVector}
+import org.apache.spark.mllib.linalg.{SparseVector, Vectors}
 import org.apache.spark.sql.{Row, SQLContext}
 import org.scalatest.{BeforeAndAfterAll, FunSuite}
 import java.sql.Time
 import java.sql.Timestamp
+
 import com.clearspring.analytics.stream.cardinality.HyperLogLogPlus
+import org.apache.hadoop.conf.Configuration
 import org.apache.spark.sql.types._
 
 class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfterAll {
@@ -141,7 +144,7 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
 
     dao.merge(sc, new Path(outputPath, "postmerge").toString, 1)
 
-    val daoMerge = new LuceneDAO(outputPath, dimensions, storedDimensions, measures)
+    val daoMerge = new LuceneDAO(s"${outputPath}/postmerge", dimensions, storedDimensions, measures)
     daoMerge.load(sc)
 
     val rdd3 = daoMerge.search("tld:google.com")
@@ -152,6 +155,19 @@ class LuceneDAOSuite extends FunSuite with SharedSparkContext with BeforeAndAfte
 
     assert(rdd3.map(_.getAs[String](0).toString).collect.toSet == Set("123", "456"))
     assert(rdd4.map(_.getAs[String](0).toString).collect.toSet == Set("123"))
+
+    val conf = new Configuration
+    val indexDir = new Path(s"${outputPath}/postmerge/${LuceneDAO.INDICES_PREFIX}")
+    val fs = FileSystem.get(indexDir.toUri, conf)
+
+    val files: Array[FileStatus] = fs.listStatus(indexDir, new PathFilter {
+      override def accept(path: Path): Boolean = {
+        path.getName.startsWith(LuceneDAO.SUFFIX)
+      }
+    })
+
+    assert(files.size == 1)
+
   }
 
   test("index test with standard analyzer and stored fields") {
