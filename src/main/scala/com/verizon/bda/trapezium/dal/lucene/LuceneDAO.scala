@@ -237,8 +237,19 @@ class LuceneDAO(val location: String,
           NoLockFactory.INSTANCE.asInstanceOf[LockFactory],
           conf, 4096)
 
-      val writerConfig = new IndexWriterConfig().setOpenMode(OpenMode.CREATE)
+      val writerConfig = new IndexWriterConfig()
+        .setOpenMode(OpenMode.CREATE)
+        .setUseCompoundFile(false)
 
+      val mergePolicy: MergePolicy = writerConfig.getMergePolicy
+      log.debug(s"mergePolicy was: ${mergePolicy}")
+
+      mergePolicy match {
+        case t: TieredMergePolicy => mergePolicy.setNoCFSRatio(0.0)
+        case l: LogMergePolicy => mergePolicy.setNoCFSRatio(0.0)
+      }
+
+      log.info(s"Using mergePolicy: ${mergePolicy}")
       val writer = new IndexWriter(mergedIndex, writerConfig)
 
       val files = fileIterator.toArray
@@ -253,8 +264,14 @@ class LuceneDAO(val location: String,
         i += 1
       }
 
+      log.info(s"Logically merging ${files.size} shards into one shard")
+      val start = System.currentTimeMillis
+
       writer.addIndexes(indexes: _*)
-      writer.forceMerge(1)
+
+      val elapsedSecs = (System.currentTimeMillis() - start) / 1000.0f
+      log.info(s"Logical merge took ${elapsedSecs} secs")
+
       writer.close()
       Iterator.empty
     }).count()
