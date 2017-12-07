@@ -279,8 +279,9 @@ class LuceneDAO(val location: String,
     val outputDictionaryPath = new HadoopPath(outputPath.stripSuffix("/") + "/" + DICTIONARY_PREFIX)
     val outputSchemaPath = new HadoopPath(outputPath.stripSuffix("/") + "/" + SCHEMA_PREFIX)
 
-    FileUtil.copy(new File(dictionaryPath), fs, outputDictionaryPath, false, sc.hadoopConfiguration)
-    FileUtil.copy(new File(schemaPath), fs, outputSchemaPath, false, sc.hadoopConfiguration)
+    FileUtil.copy(fs, new HadoopPath(dictionaryPath), fs, outputDictionaryPath, false, true, sc.hadoopConfiguration)
+    FileUtil.copy(fs, new HadoopPath(schemaPath), fs, outputSchemaPath, false, true, sc.hadoopConfiguration)
+
   }
 
   def load(sc: SparkContext): Unit = {
