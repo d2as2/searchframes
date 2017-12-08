@@ -1,33 +1,31 @@
 package com.verizon.bda.trapezium.dal.lucene
 
 import java.io._
+import java.sql.Time
 
 import com.verizon.bda.trapezium.dal.exceptions.LuceneDAOException
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileStatus, FileSystem, FileUtil, PathFilter, Path => HadoopPath}
 import org.apache.log4j.Logger
-import org.apache.lucene.index._
-import org.apache.lucene.index.IndexWriterConfig.OpenMode
-import org.apache.spark.sql.types.{ArrayType, StructField, StructType}
-import org.apache.spark.{SparkConf, SparkContext}
-import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.functions._
-import org.apache.spark.sql.{DataFrame, Row}
-import org.apache.spark.storage.StorageLevel
-import java.sql.Time
-
+import org.apache.lucene.analysis.Analyzer
 import org.apache.lucene.analysis.core.KeywordAnalyzer
 import org.apache.lucene.analysis.standard.StandardAnalyzer
+import org.apache.lucene.document.Field
+import org.apache.lucene.index.IndexWriterConfig.OpenMode
+import org.apache.lucene.index._
+import org.apache.lucene.store.{Directory, LockFactory, MMapDirectory, NoLockFactory}
+import org.apache.solr.store.hdfs.HdfsDirectory
+import org.apache.spark.mllib.linalg.Vectors
+import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.types.{ArrayType, StructField, StructType}
+import org.apache.spark.sql.{DataFrame, Row}
+import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.{DalUtils, RDDUtils}
+import org.apache.spark.{SparkConf, SparkContext}
 
 import scala.collection.mutable
 import scala.util.Random
-import org.apache.spark.mllib.linalg.Vectors
-import org.apache.lucene.analysis.Analyzer
-import org.apache.lucene.document.Field
-import org.apache.lucene.store.{Directory, MMapDirectory, NoLockFactory}
-import org.apache.solr.store.hdfs.HdfsDirectory
-import org.apache.lucene.store.LockFactory
 
 class LuceneDAO(val location: String,
                 val searchFields: Set[String],
@@ -237,22 +235,23 @@ class LuceneDAO(val location: String,
           NoLockFactory.INSTANCE.asInstanceOf[LockFactory],
           conf, 4096)
 
+      val mergePolicy: TieredMergePolicy = new TieredMergePolicy()
+
+      mergePolicy.setNoCFSRatio(0.0)
+      mergePolicy.setMaxMergeAtOnce(10000)
+      mergePolicy.setSegmentsPerTier(10000)
+
       val writerConfig = new IndexWriterConfig()
         .setOpenMode(OpenMode.CREATE)
         .setUseCompoundFile(false)
-
-      val mergePolicy: MergePolicy = writerConfig.getMergePolicy
-      log.debug(s"mergePolicy was: ${mergePolicy}")
-
-      mergePolicy match {
-        case t: TieredMergePolicy => mergePolicy.setNoCFSRatio(0.0)
-        case l: LogMergePolicy => mergePolicy.setNoCFSRatio(0.0)
-      }
+        .setRAMBufferSizeMB(1024.0)
+        .setMergePolicy(mergePolicy)
 
       log.info(s"Using mergePolicy: ${mergePolicy}")
-      val writer = new IndexWriter(mergedIndex, writerConfig)
 
       val files = fileIterator.toArray
+
+      val writer = new IndexWriter(mergedIndex, writerConfig)
       val indexes = new Array[Directory](files.length)
 
       var i = 0
@@ -399,7 +398,7 @@ class LuceneDAO(val location: String,
                         other: OLAPAggregator) => {
     agg.merge(other)
   }
-  
+
   // TODO: Multiple  measures can be aggregated at same time
   def aggregate(queryStr: String,
                 measure: String,
