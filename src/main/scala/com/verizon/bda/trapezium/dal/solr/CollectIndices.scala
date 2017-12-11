@@ -165,15 +165,27 @@ object CollectIndices {
     }).groupBy(_._1)
 
     val sshSequence = getWellDistributed(sshSequenceMap, coreMap.keySet.size)
-    val command = s"mkdir ${movingDirectory}"
-    machineMap.values.foreach(_.runCommand(command, false))
+    createMovingDirectory(movingDirectory)
     val fileMap = parallelSshFire(sshSequence, movingDirectory, coreMap)
-    machineMap.values.foreach(_.disconnectSession())
-    machineMap.clear()
+
     log.info(s"map prepared was " + fileMap.toMap)
     fileMap.toMap[String, ListBuffer[(String, String)]]
   }
 
+  def closeSession(): Unit = {
+    machineMap.values.foreach(_.disconnectSession())
+    machineMap.clear()
+  }
+
+  def createMovingDirectory(movingDirectory: String): Unit = {
+    val command = s"mkdir ${movingDirectory}"
+    machineMap.values.foreach(_.runCommand(command, false))
+  }
+
+  def deleteDirectory(oldCollectionDirectory: String): Unit = {
+    val command = s"rm -rf ${oldCollectionDirectory}"
+    machineMap.values.foreach(_.runCommand(command, false))
+  }
   def parallelSshFire(sshSequence: Array[(CollectIndices, String, String, String)],
                       directory: String,
                       coreMap: Map[String, String]): MMap[String, ListBuffer[(String, String)]] = {

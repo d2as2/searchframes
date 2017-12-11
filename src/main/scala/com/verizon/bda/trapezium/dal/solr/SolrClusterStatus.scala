@@ -29,6 +29,12 @@ object SolrClusterStatus {
     collectionName = collection
   }
 
+  def getOldCollectionMapped(aliasName: String): String = {
+    val clusterJsonResponse = new JSONObject(getClusterStatus(collectionName, false))
+   clusterJsonResponse.get("cluster").asInstanceOf[JSONObject]
+      .get("aliases").asInstanceOf[JSONObject].getString(aliasName)
+  }
+
   lazy val cloudClient: ZkClientClusterStateProvider =
     new ZkClientClusterStateProvider(zkHosts, chroot)
 
@@ -49,10 +55,14 @@ object SolrClusterStatus {
     new ZkClientClusterStateProvider(zkHosts, chroot)
   }
 
-  def getClusterStatus(collection: String): String = {
+  def getClusterStatus(collection: String, collectionNeeded: Boolean = true): String = {
     val node: String = solrNodes(0)
-    val url = s"http://$node/solr/admin/collections?action=CLUSTERSTATUS" +
-      s"&wt=json&collection=$collection"
+    val collectionUrl = if (collectionNeeded) {
+      s"&collection=$collection"
+    } else {
+      ""
+    }
+    val url = s"http://$node/solr/admin/collections?action=CLUSTERSTATUS&wt=json" + collectionUrl
     SolrOps.makeHttpRequest(url)
   }
 
@@ -62,8 +72,8 @@ object SolrClusterStatus {
     // Convert JSON string to JSONObject
     val solrResponseBody = getClusterStatus(this.collectionName)
 
-    val tomJsonObject = new JSONObject(solrResponseBody)
-    val test = tomJsonObject.get("cluster").asInstanceOf[JSONObject]
+    val clusterJsonResponse = new JSONObject(solrResponseBody)
+    val test = clusterJsonResponse.get("cluster").asInstanceOf[JSONObject]
       .get("collections").asInstanceOf[JSONObject]
     val collectionName = test.keys().next().toString
     val configName = test.get(collectionName).asInstanceOf[JSONObject]
