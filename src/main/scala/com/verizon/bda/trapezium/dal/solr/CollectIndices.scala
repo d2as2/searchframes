@@ -108,12 +108,12 @@ class CollectIndices {
         strBuilder.append(new String(tmp, 0, i))
       }
       if (continueLoop && channel.isClosed) {
-        log.warn("exit-status:" + channel.getExitStatus)
-        log.warn("with error stream as " + channel.getErrStream.toString)
+        log.info("exit-status:" + channel.getExitStatus)
+        log.info("with error stream as " + channel.getErrStream.toString)
         continueLoop = false
       }
     }
-    log.warn(strBuilder.toString)
+    log.info(strBuilder.toString)
     channel.getExitStatus
   }
 
