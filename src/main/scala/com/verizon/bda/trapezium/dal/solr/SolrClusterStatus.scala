@@ -2,7 +2,7 @@ package com.verizon.bda.trapezium.dal.solr
 
 import org.apache.log4j.Logger
 import org.apache.solr.client.solrj.impl.ZkClientClusterStateProvider
-import org.json.JSONObject
+import org.json.{JSONException, JSONObject}
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
@@ -21,29 +21,40 @@ object SolrClusterStatus {
   // "listOfzookeepers"
   var chroot: String = _
   var collectionName: String = _
+  var solrNodes: List[String] = Nil
+  var cloudClient: ZkClientClusterStateProvider = _
 
   // "zroot"
   def apply(zkList: String, zroot: String, collection: String): Unit = {
     zkHostList = zkList
     chroot = zroot
     collectionName = collection
+    val zkHosts = zkHostList.split(",").toList.asJava
+    cloudClient = new ZkClientClusterStateProvider(zkHosts, chroot)
+    log.info(s"$zkHosts")
+    log.info(s"$chroot")
+    solrNodes = getSolrNodes(cloudClient)
+    log.info(s"${solrNodes.toList}")
   }
 
-  def getOldCollectionMapped(aliasName: String): String = {
-    val clusterJsonResponse = new JSONObject(getClusterStatus(collectionName, false))
-   clusterJsonResponse.get("cluster").asInstanceOf[JSONObject]
-      .get("aliases").asInstanceOf[JSONObject].getString(aliasName)
-  }
 
-  lazy val cloudClient: ZkClientClusterStateProvider =
-    new ZkClientClusterStateProvider(zkHosts, chroot)
-
-
-  lazy val solrNodes = getSolrNodes
   // solrMap("zkHosts")
-  lazy val zkHosts = zkHostList.split(",").toList.asJava
 
-  def getSolrNodes: List[String] = {
+  def getSolrNodes(cloudClient: ZkClientClusterStateProvider): List[String] = {
+    cloudClient.connect()
+    log.info(s"in getSolrNodes the value of cloud client:$cloudClient ")
+    log.info(s"cloudclientObject $cloudClient")
+    try {
+      log.info(s"liveNodes ${cloudClient.liveNodes}")
+    }
+    catch {
+      case e: Exception => {
+        log.error("with live nodes", e)
+        log.info(s"cloudclientObject $cloudClient")
+        e.printStackTrace()
+      }
+    }
+
     val liveNodes = cloudClient.liveNodes()
       .asScala.toList
       .map(p => p.split("_")(0))
@@ -51,13 +62,29 @@ object SolrClusterStatus {
     liveNodes
   }
 
-  def getSolrclient(): ZkClientClusterStateProvider = {
-    new ZkClientClusterStateProvider(zkHosts, chroot)
+
+//  def getSolrclient(): ZkClientClusterStateProvider = {
+//    new ZkClientClusterStateProvider(zkHosts, chroot)
+//  }
+
+  def getOldCollectionMapped(aliasName: String): String = {
+    log.info(s"in getOldCollectionMapped alias name is $aliasName")
+    val clusterJsonResponse = new JSONObject(getClusterStatus(collectionName, false))
+    val oldCollectionName = try {
+      clusterJsonResponse.get("cluster").asInstanceOf[JSONObject]
+        .get("aliases").asInstanceOf[JSONObject].getString(aliasName)
+    }
+    catch {
+      case e: JSONException =>
+        log.warn(s"alias colection:$aliasName might not be present", e)
+        null
+    }
+    oldCollectionName
   }
 
   def getClusterStatus(collection: String, collectionNeeded: Boolean = true): String = {
     val node: String = solrNodes(0)
-    val collectionUrl = if (collectionNeeded) {
+    val collectionUrl: String = if (collectionNeeded) {
       s"&collection=$collection"
     } else {
       ""

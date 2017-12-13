@@ -123,7 +123,10 @@ abstract class SolrOps(solrMap: Map[String, String]) {
     createCollection()
     createCores()
     aliasCollection()
-    deleteOldCollections(oldCollection)
+    if (oldCollection != null) {
+      deleteOldCollections(oldCollection)
+    }
+    SolrClusterStatus.cloudClient.close()
   }
 
   def isReqComplete(asyncId: String): Boolean = {

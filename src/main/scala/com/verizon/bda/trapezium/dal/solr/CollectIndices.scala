@@ -60,6 +60,10 @@ class CollectIndices {
         retries = retries - 1
       }
       while (code != 0 && retries > 0)
+      if (code != 0) {
+        throw new SolrOpsException(s"could not execute $command has" +
+          s" returned $code ${session.getHost}")
+      }
     } catch {
       case e: Exception => {
         log.warn(s"Has problem running the command :$command", e)
@@ -95,12 +99,13 @@ class CollectIndices {
 
   def printResult(in: InputStream, channel: ChannelExec): Int = {
     val tmp = new Array[Byte](1024)
+    val strBuilder = new StringBuilder
     var continueLoop = true
     while (continueLoop) {
       while (in.available > 0) {
         val i = in.read(tmp, 0, 1024)
         if (i < 0) continueLoop = false
-        log.info(new String(tmp, 0, i))
+        strBuilder.append(new String(tmp, 0, i))
       }
       if (continueLoop && channel.isClosed) {
         log.warn("exit-status:" + channel.getExitStatus)
@@ -108,7 +113,7 @@ class CollectIndices {
         continueLoop = false
       }
     }
-
+    log.warn(strBuilder.toString)
     channel.getExitStatus
   }
 
