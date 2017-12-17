@@ -1,16 +1,18 @@
 package com.verizon.bda.trapezium.dal.lucene
 
 import com.verizon.bda.trapezium.dal.exceptions.LuceneDAOException
-import org.apache.spark.Logging
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types._
+import org.slf4j.LoggerFactory
 
 /**
  * @author debasish83 on 12/22/16.
  *         Supports primitives for extracting doc value fields
  */
 class DocValueExtractor(leafReaders: Seq[LuceneReader],
-                        converter: OLAPConverter) extends Serializable with Logging {
+                        converter: OLAPConverter) extends Serializable {
+
+  private val logger = LoggerFactory.getLogger(this.getClass)
   val schema = converter.schema
   val dimensions = converter.dimensions
   val storedDimensions = converter.storedDimensions

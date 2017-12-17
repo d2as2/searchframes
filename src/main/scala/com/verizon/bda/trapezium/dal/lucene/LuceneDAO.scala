@@ -2,7 +2,6 @@ package com.verizon.bda.trapezium.dal.lucene
 
 import java.io._
 import java.sql.Time
-
 import com.verizon.bda.trapezium.dal.exceptions.LuceneDAOException
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileStatus, FileSystem, FileUtil, PathFilter, Path => HadoopPath}
@@ -23,7 +22,6 @@ import org.apache.spark.sql.{DataFrame, Row}
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.{DalUtils, RDDUtils}
 import org.apache.spark.{SparkConf, SparkContext}
-
 import scala.collection.mutable
 import scala.util.Random
 
@@ -152,7 +150,7 @@ class LuceneDAO(val location: String,
           } catch {
             case e: Throwable => {
               throw new LuceneDAOException(s"Error with adding row ${r} " +
-                s"to document ${e.getStackTraceString}")
+                s"to document ${e.getMessage}")
             }
           }
         }
@@ -557,7 +555,6 @@ class LuceneDAO(val location: String,
 }
 
 object LuceneDAO {
-
   val PREFIX = "trapezium-lucenedao"
   val SUFFIX = "part-"
 
@@ -566,5 +563,5 @@ object LuceneDAO {
 
   val DICTIONARY_PREFIX = "dictionary"
   val SCHEMA_PREFIX = "schema"
-
 }
+

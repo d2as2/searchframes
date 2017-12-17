@@ -1,14 +1,15 @@
 package com.verizon.bda.trapezium.dal.lucene
 
+import java.util.BitSet
 import org.apache.lucene.analysis.core.KeywordAnalyzer
 import org.apache.lucene.index._
 import org.apache.lucene.queryparser.classic.QueryParser
-import org.apache.lucene.search.{BooleanQuery, IndexSearcher, Query, ScoreDoc}
-import org.apache.spark.Logging
+import org.apache.lucene.search.{BooleanQuery, IndexSearcher, ScoreDoc}
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types.TimestampType
 import java.util.BitSet
 import org.apache.lucene.analysis.standard.StandardAnalyzer
+import org.slf4j.LoggerFactory
 import scala.collection.mutable.ArrayBuffer
 import org.apache.lucene.analysis.Analyzer
 
@@ -22,8 +23,9 @@ case class LuceneReader(leafReader: LeafReader, range: FeatureAttr)
 
 class LuceneShard(reader: IndexReader,
                   converter: OLAPConverter,
-                  analyzer: Analyzer) extends IndexSearcher(reader) with Logging {
-  logInfo(s"lucene shard leaf readers ${leafContexts.size}")
+                  analyzer: Analyzer) extends IndexSearcher(reader) {
+  private val log = LoggerFactory.getLogger(this.getClass)
+  log.info(s"lucene shard leaf readers ${leafContexts.size}")
 
   // TODO: LeafReader > 1 are shards created by singlethreaded index writer due to flush limits
   // TODO: Each flush limit generates a new shard

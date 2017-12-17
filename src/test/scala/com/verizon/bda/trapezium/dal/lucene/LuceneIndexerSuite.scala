@@ -5,19 +5,17 @@ package com.verizon.bda.trapezium.dal.lucene
   *
   */
 import java.io.File
-
-import com.holdenkarau.spark.testing.SharedSparkContext
 import org.apache.commons.io.FileUtils
 import org.apache.hadoop.fs.Path
 import org.apache.lucene.document.{Document, StringField}
 import org.apache.lucene.document._
 import org.apache.lucene.search.IndexSearcher
 import org.apache.spark.SparkConf
+import org.apache.spark.mllib.util.MLlibTestSparkContext
 import org.apache.spark.serializer.{KryoSerializer, SerializerInstance}
 import org.apache.spark.sql.{Row, SQLContext}
 import org.apache.spark.sql.types._
 import org.scalatest.{BeforeAndAfterAll, FunSuite}
-
 import scala.collection.JavaConverters._
 
 class TestConverter extends SparkLuceneConverter {
@@ -53,14 +51,14 @@ class TestConverter extends SparkLuceneConverter {
     StructField("tld", ArrayType(StringType)), StructField("indices", ArrayType(IntegerType))))
 }
 
-class LuceneIndexerSuite extends FunSuite with SharedSparkContext with BeforeAndAfterAll {
+class LuceneIndexerSuite extends FunSuite with MLlibTestSparkContext with BeforeAndAfterAll {
   val outputPath = "target/luceneIndexerTest/"
   val hdfsIndexPath = new Path(outputPath, "hdfs").toString
   val localIndexPath = new Path(outputPath, "local").toString
 
   override def beforeAll(): Unit = {
     super.beforeAll()
-    conf.registerKryoClasses(Array(classOf[IndexSearcher],
+    sc.getConf.registerKryoClasses(Array(classOf[IndexSearcher],
       classOf[DictionaryManager]))
     cleanup()
   }
@@ -83,7 +81,7 @@ class LuceneIndexerSuite extends FunSuite with SharedSparkContext with BeforeAnd
 
     val idx = new LuceneIndexer("local", localIndexPath, hdfsIndexPath, "tld")
       .setConverter(new TestConverter())
-    val sqlContext = SQLContext.getOrCreate(sc)
+    val sqlContext = spark.sqlContext
     val df = sqlContext.createDataFrame(Seq(("123", Array("verizon.com", "google.com"),
       Array[Int](5, 10, 17, 29)),
       ("456", Array("apple.com", "google.com"),
