@@ -106,6 +106,9 @@ abstract class SolrOps(solrMap: Map[String, String]) {
 
   def createCores(): Unit
 
+  def deleteOldCollections(oldCollection: String): Unit
+
+
   def makeSolrCollection(aliasName: String, hdfsPath: String, workflowTime: Time): Unit = {
     this.aliasCollectionName = aliasName
     this.indexFilePath = if (hdfsPath.last.toString == File.separator) {
@@ -115,11 +118,15 @@ abstract class SolrOps(solrMap: Map[String, String]) {
     }
     collectionName = s"${aliasCollectionName}_${workflowTime.getTime.toString}"
     SolrClusterStatus(solrMap("zkHosts"), solrMap("zroot"), collectionName)
-
+    val oldCollection = SolrClusterStatus.getOldCollectionMapped(aliasName)
     upload()
     createCollection()
     createCores()
     aliasCollection()
+    if (oldCollection != null) {
+      deleteOldCollections(oldCollection)
+    }
+    SolrClusterStatus.cloudClient.close()
   }
 
   def isReqComplete(asyncId: String): Boolean = {

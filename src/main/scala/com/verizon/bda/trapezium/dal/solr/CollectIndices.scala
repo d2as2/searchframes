@@ -60,6 +60,10 @@ class CollectIndices {
         retries = retries - 1
       }
       while (code != 0 && retries > 0)
+      if (code != 0) {
+        throw new SolrOpsException(s"could not execute $command has" +
+          s" returned $code ${session.getHost}")
+      }
     } catch {
       case e: Exception => {
         log.warn(s"Has problem running the command :$command", e)
@@ -95,20 +99,21 @@ class CollectIndices {
 
   def printResult(in: InputStream, channel: ChannelExec): Int = {
     val tmp = new Array[Byte](1024)
+    val strBuilder = new StringBuilder
     var continueLoop = true
     while (continueLoop) {
       while (in.available > 0) {
         val i = in.read(tmp, 0, 1024)
         if (i < 0) continueLoop = false
-        log.info(new String(tmp, 0, i))
+        strBuilder.append(new String(tmp, 0, i))
       }
       if (continueLoop && channel.isClosed) {
-        log.warn("exit-status:" + channel.getExitStatus)
-        log.warn("with error stream as " + channel.getErrStream.toString)
+        log.info("exit-status:" + channel.getExitStatus)
+        log.info("with error stream as " + channel.getErrStream.toString)
         continueLoop = false
       }
     }
-
+    log.info(strBuilder.toString)
     channel.getExitStatus
   }
 
@@ -165,15 +170,27 @@ object CollectIndices {
     }).groupBy(_._1)
 
     val sshSequence = getWellDistributed(sshSequenceMap, coreMap.keySet.size)
-    val command = s"mkdir ${movingDirectory}"
-    machineMap.values.foreach(_.runCommand(command, false))
+    createMovingDirectory(movingDirectory)
     val fileMap = parallelSshFire(sshSequence, movingDirectory, coreMap)
-    machineMap.values.foreach(_.disconnectSession())
-    machineMap.clear()
+
     log.info(s"map prepared was " + fileMap.toMap)
     fileMap.toMap[String, ListBuffer[(String, String)]]
   }
 
+  def closeSession(): Unit = {
+    machineMap.values.foreach(_.disconnectSession())
+    machineMap.clear()
+  }
+
+  def createMovingDirectory(movingDirectory: String): Unit = {
+    val command = s"mkdir ${movingDirectory}"
+    machineMap.values.foreach(_.runCommand(command, false))
+  }
+
+  def deleteDirectory(oldCollectionDirectory: String): Unit = {
+    val command = s"rm -rf ${oldCollectionDirectory}"
+    machineMap.values.foreach(_.runCommand(command, false))
+  }
   def parallelSshFire(sshSequence: Array[(CollectIndices, String, String, String)],
                       directory: String,
                       coreMap: Map[String, String]): MMap[String, ListBuffer[(String, String)]] = {

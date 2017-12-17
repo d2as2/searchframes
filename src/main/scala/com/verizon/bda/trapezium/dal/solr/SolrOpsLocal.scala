@@ -39,5 +39,11 @@ class SolrOpsLocal(solrMap: Map[String, String]) extends SolrOps(solrMap: Map[St
     SolrOps.makeHttpRequests(list.toList)
   }
 
+  override def deleteOldCollections(oldCollection: String): Unit = {
+    deleteCollection(oldCollection)
+    val oldCollectionDirectory = solrMap("storageDir") + oldCollection
+    CollectIndices.deleteDirectory(oldCollectionDirectory)
+    CollectIndices.closeSession()
 
+  }
 }

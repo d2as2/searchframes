@@ -36,5 +36,8 @@ class SolrOpsHdfs(solrMap: Map[String, String]) extends SolrOps(solrMap: Map[Str
     SolrOps.makeHttpRequests(list.toList)
   }
 
-
+  override def deleteOldCollections(oldCollection: String): Unit = {
+    log.info(s"deleting old collection :$oldCollection")
+    deleteCollection(oldCollection)
+  }
 }
